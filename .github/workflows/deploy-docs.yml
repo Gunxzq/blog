@@ -4,7 +4,7 @@ name: 代码部署文档
 on:
   push:
     branches:
-      - masin
+      - main
 
 permissions:
   contents: write
