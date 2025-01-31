@@ -1,12 +1,12 @@
 import { navbar } from "vuepress-theme-hope";
 
-export const zhNavbar = navbar([
-  "/zh/",
-  "/zh/demo/",
+export default navbar([
+  "/",
+  "/demo/",
   {
     text: "博文",
     icon: "pen-to-square",
-    prefix: "/zh/posts/",
+    prefix: "/posts/",
     children: [
       {
         text: "苹果",
