@@ -1,22 +1,27 @@
 ---
 cover: /assets/images/cover2.jpg
-icon: pen-to-square
-date: 2022-01-12
+date: 2025-01-31
 category:
-  - 蔬菜
+  - HTML
 tag:
   - 红
-  - 圆
+  - ads
 star: true
 sticky: true
+footer: 页脚
 ---
+摘要
+<!-- more -->
+# 自定义文章
 
-# 番茄
+## 二级标题
 
-## 标题 2
+这里是内容。
+![Alt](/logo.png)
+![Alt](/logo.png)
+![Alt](/logo.png)
+
+### 三级标题
 
 这里是内容。
 
-### 标题 3
-
-这里是内容。
