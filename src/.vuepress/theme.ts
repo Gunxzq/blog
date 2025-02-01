@@ -1,72 +1,48 @@
-import { hopeTheme } from "vuepress-theme-hope";
+// 主题设置
+
+import { hopeTheme, watermark } from "vuepress-theme-hope";
 
 import navbar from "./navbar.js";
 import sidebar from "./sidebar.js";
 
 export default hopeTheme({
   hostname: "https://mister-hope.github.io",
-
+  darkmode:'toggle',
   author: {
-    name: "Mr.Hope",
+    name: "xzq",
     url: "https://mister-hope.com",
   },
-
-  logo: "https://theme-hope-assets.vuejs.press/logo.svg",
-
-  repo: "vuepress-theme-hope/vuepress-theme-hope",
-
+// 网站图标
+  logo: "/logo.png",
+// 源文件的仓库按钮
+  repo: "https://github.com/Gunxzq/blog",
+  repoLabel:'Github',
+  docsRepo:"https://github.com/Gunxzq/blog",
   docsDir: "src",
 
   // 导航栏
+  // 会自动选择匹配的文件
   navbar,
 
   // 侧边栏
   sidebar,
-
   // 页脚
-  footer: "默认页脚",
+  footer: "页脚内容",
   displayFooter: true,
 
   // 博客相关
   blog: {
+    avatar:"/avater.jpg",
     description: "一个前端开发者",
+    // 介绍页
     intro: "/intro.html",
+    // sidebarDisplay:"always",
     medias: {
-      Baidu: "https://example.com",
-      BiliBili: "https://example.com",
-      Bitbucket: "https://example.com",
-      Dingding: "https://example.com",
-      Discord: "https://example.com",
-      Dribbble: "https://example.com",
-      Email: "mailto:info@example.com",
-      Evernote: "https://example.com",
-      Facebook: "https://example.com",
-      Flipboard: "https://example.com",
-      Gitee: "https://example.com",
-      GitHub: "https://example.com",
-      Gitlab: "https://example.com",
-      Gmail: "mailto:info@example.com",
-      Instagram: "https://example.com",
-      Lark: "https://example.com",
-      Lines: "https://example.com",
-      Linkedin: "https://example.com",
-      Pinterest: "https://example.com",
-      Pocket: "https://example.com",
-      QQ: "https://example.com",
-      Qzone: "https://example.com",
-      Reddit: "https://example.com",
-      Rss: "https://example.com",
-      Steam: "https://example.com",
-      Twitter: "https://example.com",
-      Wechat: "https://example.com",
-      Weibo: "https://example.com",
-      Whatsapp: "https://example.com",
-      Youtube: "https://example.com",
-      Zhihu: "https://example.com",
-      VuePressThemeHope: {
-        icon: "https://theme-hope-assets.vuejs.press/logo.svg",
-        link: "https://theme-hope.vuejs.press",
-      },
+      Github:"https://github.com/Gunxzq"
+      // VuePressThemeHope: {
+      //   icon: "https://theme-hope-assets.vuejs.press/logo.svg",
+      //   link: "https://theme-hope.vuejs.press",
+      // },
     },
   },
 
@@ -97,8 +73,14 @@ export default hopeTheme({
     demo: true,
     figure: true,
     gfm: true,
+    // 懒加载
     imgLazyload: true,
     imgSize: true,
+    // 标记一个图片是否可以切换模式
+    imgMark:{
+      light:['light'],
+      dark:['dark']
+    },
     include: true,
     mark: true,
     plantuml: true,
@@ -163,13 +145,10 @@ export default hopeTheme({
   // 在这里配置主题提供的插件
   plugins: {
     blog: true,
-
-    // 启用之前需安装 @waline/client
-    // 警告: 这是一个仅供演示的测试服务，在生产环境中请自行部署并使用自己的服务！
-    // comment: {
-    //   provider: "Waline",
-    //   serverURL: "https://waline-comment.vuejs.press",
-    // },
+    slimsearch:{
+      // 搜索文章内容
+      // indexContent:true
+    },
 
     components: {
       components: ["Badge", "VPCard"],
@@ -177,63 +156,18 @@ export default hopeTheme({
 
     icon: {
       prefix: "fa6-solid:",
+      assets:"fontawesome",
+    },
+    photoSwipe:{
+      download:false,
+      scrollToClose:true
+    },
+    copyright:{
+      author:"Gunxzq",
+      global:true,
+      disableCopy:true,
+      disableSelection:true
     },
 
-    // 如果你需要 PWA。安装 @vuepress/plugin-pwa 并取消下方注释
-    // pwa: {
-    //   favicon: "/favicon.ico",
-    //   cacheHTML: true,
-    //   cacheImage: true,
-    //   appendBase: true,
-    //   apple: {
-    //     icon: "/assets/icon/apple-icon-152.png",
-    //     statusBarColor: "black",
-    //   },
-    //   msTile: {
-    //     image: "/assets/icon/ms-icon-144.png",
-    //     color: "#ffffff",
-    //   },
-    //   manifest: {
-    //     icons: [
-    //       {
-    //         src: "/assets/icon/chrome-mask-512.png",
-    //         sizes: "512x512",
-    //         purpose: "maskable",
-    //         type: "image/png",
-    //       },
-    //       {
-    //         src: "/assets/icon/chrome-mask-192.png",
-    //         sizes: "192x192",
-    //         purpose: "maskable",
-    //         type: "image/png",
-    //       },
-    //       {
-    //         src: "/assets/icon/chrome-512.png",
-    //         sizes: "512x512",
-    //         type: "image/png",
-    //       },
-    //       {
-    //         src: "/assets/icon/chrome-192.png",
-    //         sizes: "192x192",
-    //         type: "image/png",
-    //       },
-    //     ],
-    //     shortcuts: [
-    //       {
-    //         name: "Demo",
-    //         short_name: "Demo",
-    //         url: "/demo/",
-    //         icons: [
-    //           {
-    //             src: "/assets/icon/guide-maskable.png",
-    //             sizes: "192x192",
-    //             purpose: "maskable",
-    //             type: "image/png",
-    //           },
-    //         ],
-    //       },
-    //     ],
-    //   },
-    // },
   },
 });
