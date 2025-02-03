@@ -3,9 +3,10 @@ date: 2025-02-01
 category:
   - 性能优化
 tag:
+  - 压缩
 # sticky: true
 ---
-资源体积优化，通过压缩，优化图片等手段，提高资源的**加载速度**。
+资源体积优化，通过**压缩，优化图片**等手段，提高资源的**加载速度**。
 <!-- more -->
 # **资源体积优化**
 
@@ -22,7 +23,7 @@ tag:
 3. 通知后端开启gzip。
 
 ### 最佳实践
-1. 针对使用webpack的vue项目
+1. Vue CLI项目
 ```
 npm install compression-webpack-plugin@6.1.1
 ```

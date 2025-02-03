@@ -7,33 +7,18 @@ tag:
   - 延迟加载
   - 缓存
 ---
-数据渲染优化，针对大量数据，通过分页、虚拟列表、虚拟表格，canvas优化性能
+资源加载优化，通过**按需加载、延迟加载**资源、**缓存**资源来减少阻塞和服务器请求。
 <!-- more -->
-# **数据渲染优化**
+# **资源加载优化**
 
-## 组件、模块按需加载
+## **按需加载：Lazy Loading、On-demand Loading**
 
-在应用启动时只加载必要的资源，而将其他资源延迟加载，直到它们被实际需要。
-1. **减少初始加载时间**：通过按需加载，只需要加载用户当前需要的资源，减少了初始加载时间。
-2. **降低服务器负载**：按需加载可以减少服务器的请求次数和数据传输量，降低服务器负载。
-3. **提升用户体验**：用户在需要时才加载相关资源，减少了等待时间，提高了用户体验。
+根据用户的需求，动态地加载所需的**组件、模块或功能**。
 
-### 动态导入
+### **动态导入模块**
 
-动态导入是ES6提供的新特性，允许在运行时动态的导入模块。使用**import()**函数。
-
-```js
-// 当按钮点击时，才会动态导入module模块
-button.addEventListener('click', async () => {
-  const module = await import('./module.js');
-  module.default();
-});
-
-```
-
-### 条件加载
-
-条件加载是一种根据特定条件加载资源的方式。例如，你可以根据用户的设备类型、网络状况或其他条件来决定是否加载某个模块。
+动态导入是ES6提供的新特性，允许在**运行时动态的导入模块**。使用**import()**函数。
+例如，你可以根据用户的设备类型、网络状况或其他条件来决定是否加载某个模块。
 
 ```js
 if (navigator.connection.saveData) {
@@ -44,28 +29,85 @@ if (navigator.connection.saveData) {
   });
 }
 ```
-
-### 代码分割
+在工程化环境中还有以下方式：
+1. 在框架中，例如vue的**componet**动态组件指定是一个**异步组件**时，Vue会在需要时加载该组件。
+```vue
+<template>
+  <component :is="currentComponent"></component>
+</template>
+<script>
+const AsyncComponent = () => import('./components/AsyncComponent.vue');
+export default {
+  data() {
+    return {
+      currentComponent: AsyncComponent
+    };
+  }
+};
+</script>
+```
+2.vue-router配置路由，使用webpack的**require.ensure**技术，也可以实现按需加载。
+```js
+// 具有相同chunk名的模块会被打包到一起。
+const Province = r => require.ensure([], () => r(require('@/components/Province.vue')), 'chunkname1')
+const Segment = r => require.ensure([], () => r(require('@/components/Segment.vue')), 'chunkname1')
+const Loading = r => require.ensure([], () => r(require('@/components/Loading.vue')), 'chunkname3')
+const User = r => require.ensure([], () => r(require('@/components/User.vue')), 'chunkname3')
+```
+### **代码分割、分包**
 
 代码分割是一种将代码拆分为多个小块（chunk）的方法，以便按需加载。Webpack等构建工具提供了代码分割的支持。
 
 ```js
-
+// 在webpack中通过require.ensure和import()来定义代码分割点
+// 这个新的chunk会被webpack通过jsonp来异步加载
+require.ensure(dependencies: String[], callback: function(require), chunkName: String)
+// 更好的分割方式
+import(chunk)
+    .then( res => {})
+    .catch(err => {});
 ```
 
-## 延迟加载、懒加载
+## **延迟加载、懒加载**
 
-延迟加载非关键资源，仅在用户需要时菜进行加载。减少不必要的网络流量和服务器负载，从而优化用户体验。
+推迟加载非关键内容或资源，直到需要时才进行加载。侧重于**图片、视频等媒体资源**。
+
+### HTML5的loading属性
+H5的新增属性，可以在img标签中直接使用来实现懒加载。
+
+```js
+<img src="image.jpg" alt="example" loading="lazy">
+```
+
+### **Intersection Observer API**
+
+用于懒加载图片或其他DOM元素。当元素进入视口时才加载相关资源。
+
+```js
+const img = document.querySelector('img');
+
+const observer = new IntersectionObserver((entries, observer) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.src = entry.target.dataset.src;
+      observer.unobserve(entry.target);
+    }
+  });
+});
+
+observer.observe(img);
+```
 
 ##  **HTTP缓存**
+
 通过缓存资源，减少对服务器的重复请求。根据HTTP**响应头**内容的不同分两种：
 1. **强缓存**：当缓存过期时，强制向服务器请求资源。
 2. **协商缓存**：当缓存过期时，协商服务器是否更新资源。
 
-### 强缓存
+### **强缓存**
 当web应用获取资源时，先从本地获取，如果有就直接用，否则，重新发起请求。控制强缓存的标头分别是**Expires**和**Cache-Control**，**Cache-Control**的优先级高于**Expires**。
 
-#### Expires标头
+#### **Expires标头**
 
 在**HTTP/1.0**中，有效期是通过**Expires**来指定的。
 **Expires**标头使用明确的时间，而不是经过的时间来指定**缓存**的生命周期。
@@ -74,7 +116,7 @@ if (navigator.connection.saveData) {
 Expires: Wed, 21 Oct 2015 07:28:00 GMT
 ```
 由于**HTTP/1.1**已被广泛使用，无需特地提供 Expires。
-#### Cahe-Control标头
+#### **Cahe-Control标头**
 
 此字段拥有强大的缓存控制能力。常见的字段有：
 1. **max-age**：设置缓存的最大有效期，单位s。资源会缓存到本地。
@@ -87,7 +129,7 @@ Expires: Wed, 21 Oct 2015 07:28:00 GMT
 Cache-Control: max-age=604800
 ```
 
-### 协商缓存
+### **协商缓存**
 
 又称为对比缓存、弱缓存。当资源到期时，会协商服务器资源是否修改，若无修改过则使用本地资源，并更新资源的有效期。
 控制协商缓存的标头分别是**Last-Modified/If-Modified-Since**和**Etag/If-None-Match**。
@@ -109,7 +151,7 @@ Cache-Control: max-age=604800
 1. 减少页面加载时间；
 2. 减少服务器负载；
 
-### DNS缓存
+### **DNS缓存**
 
 解析IP地址的方式，就是查询DNS映射表。
 DNS查询过程大约消耗20毫秒，在DNS查询过程中，浏览器什么都不会做，保持空白。如果DNS查询很多，网页性能会受到很大影响，因此需要用到DNS缓存。
@@ -117,4 +159,4 @@ DNS查询过程大约消耗20毫秒，在DNS查询过程中，浏览器什么都
 1. 缓存时间长：减少DNS的重复查找，节省时间。
 1. 缓存时间短：及时检测服务器的IP变化，保证访问的正确性。
 
-### CDN缓存
+### **CDN缓存**

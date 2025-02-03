@@ -11,6 +11,7 @@
     "docs:update-package": "npx vp-update"
   },
   "devDependencies": {
+    "@vue/repl": "^4.4.3",
     "@vuepress/bundler-vite": "2.0.0-rc.19",
     "@vuepress/plugin-slimsearch": "^2.0.0-rc.74",
     "sass-embedded": "^1.83.0",

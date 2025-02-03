@@ -135,7 +135,7 @@ export default hopeTheme({
     //   presets: ["ts", "vue"],
     // },
 
-    // 在启用之前安装 @vue/repl
+    // // 在启用之前安装 @vue/repl
     // vuePlayground: true,
 
     // 在启用之前安装 sandpack-vue3

@@ -10,6 +10,13 @@ export default sidebar({
       link: "demo/",
       children: "structure",
     },
+    // {
+    //   text: "性能优化",
+    //   icon: "book",
+    //   prefix: "performance/",
+    //   link: "performance/",
+    //   children: "structure",
+    // },
     {
       text: "文章",
       icon: "book",
