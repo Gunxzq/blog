@@ -140,6 +140,8 @@ chrome和edge提供了**Ligthouse**扩展，可以在DevTool查看。
 
 ![edge开发者工具](<`F)W@5F(C))(YCQ`NHT)J7D.png>)
 
+### **perfance选项卡**
+
 ### web-vitals库
 [github仓库链接](https://github.com/GoogleChrome/web-vitals)
 web-vitals 是一个轻量级的JavaScript库，它专注于测量核心Web Vitals和其他关键性能指标，确保你的网站在真实用户的设备上表现卓越。
