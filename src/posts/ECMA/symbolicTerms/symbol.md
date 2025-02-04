@@ -1,8 +1,8 @@
 ---
-date: 2025-02-01
+date: 2025-02-05
 order: 2
 category:
-  - ECMA
+  - ECMA标准
 tag:
 
 # sticky: true
@@ -11,10 +11,11 @@ tag:
 # **文法符号**
 
 ## **终结符**
-表示没有产生式的元素，无法继续展开，在ECMA中使用黑色粗体表示。
+表示没有产生式的元素，无法继续展开，在ECMA中使用**黑色粗体**表示。
 
 ::: important 十六进制字面量产生式
 *HexIntegerLiteral* **::** **0x** *HexDigits*
+
 0x和::为非终结符
 :::
 
@@ -71,19 +72,37 @@ tag:
 *Identifier* **:**
 &emsp;&emsp;*IdentifierName* **but not** *ReservedWord*
 :::
-以上表示，标识符的名字不能说保留字。
+以上表示，标识符的名字不能为保留字。
 
 ## **[empty]短语**
-如果产生式的右侧出现“[empty]”这一短语，它表示该产生式的右侧不包含任何终结符号或非终结符号。
 
+如果产生式的右侧出现“[empty]”这一短语，它表示该产生式的右侧不包含任何终结符号或非终结符号。
 ::: important 参数的产生式
 *FormalParameters~[Yield,Await]~* **:**
 &emsp;&emsp;**[empty]**
 :::
 以上表示，参数可以为空。
+
 ## **前瞻限制短语**
 
+短语“[lookahead = seq]”出现在代换式某个位置的右侧，对该位置后面紧跟的内容进行限制。
+标准中有如下：
+1. **[lookahead = x]**:该位置后面必须是 x。
+2. **[lookahead ≠ x]**:该位置后面不能是 x。
+3. **[lookahead ∈ set]**：该位置后面跟着的内容必须属于 set。
+4. **[lookahead ∉ set]**:该位置后面跟着的内容必须不属于 set。
+
+## **[no LineTerminator here]**
+
+如果在句法的生成式的部分右侧出现短语“**[no LineTerminator here]**”，则表示该生成式是*受限生成式*。如果在指示位置的输入流中出现 **行终结符**(LineTerminator)，则不允许使用该生成式。
+
+::: important thorw的代换式
+*ThrowStatement* **::**
+&emsp;&emsp;**throw** [no LineTerminator here] *Expression* **;**
+:::
+
 ## **描述性短语**
+
 在一些列出所有替代方案不切实际的情况下，使用描述性短语来描述少数非终结符号：
 ::: important 
 *SourceCharacter* **::**

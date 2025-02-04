@@ -6,7 +6,7 @@ title: 博客主页
 heroImage: /assets/images/cover2.jpg
 heroText: Gunxzq
 heroFullScreen: true
-tagline: 你可以在这里放置你的口号与标语
+tagline: 学习最准确的知识
 projects:
   # - icon: folder-open
   #   name: 项目名称
