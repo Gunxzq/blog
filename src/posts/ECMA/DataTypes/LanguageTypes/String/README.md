@@ -1,5 +1,5 @@
 ---
-title: 符号和术语
+title: String类型
 index: false
 icon: laptop-code
 category:

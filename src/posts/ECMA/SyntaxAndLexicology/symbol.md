@@ -100,7 +100,7 @@ tag:
 *ThrowStatement* **::**
 &emsp;&emsp;**throw** [no LineTerminator here] *Expression* **;**
 :::
-
+可以看出throw语句不可以换行。
 ## **描述性短语**
 
 在一些列出所有替代方案不切实际的情况下，使用描述性短语来描述少数非终结符号：
