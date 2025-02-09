@@ -177,3 +177,48 @@ ForIn/OfBodyEvaluation接受
 2. 表达式是否是构造器，如果是。且是assignment
 3.  -->
 ### 函数求值
+
+函数被调用时会触发函数的内部方法[[Call]]方法。简述步骤:
+1. 创建函数的执行上下文以及函数环境记录器，并把执行上下文的词法环境指向该记录器。
+2. 对函数进行声明实例化。
+3. 执行函数体中的语句。
+实例化
+1. 对参数标识符进行实例化
+   2. 普通参数：如果函数调用的时候有赋值，则初始化为这个值，否则为undefined。
+   3. 表达式参数：如果函数调用的时候有赋值，则初始化为这个值，否则为表达式中的默认值。
+   此外，为了避免参数表达式的标识符与函数体变量声明的标识符发生“碰撞”，会在函数环境记录器上再创建一个声明式环境记录器，并把变量声明的标识符绑定在这个环境当中，从而实现两种类型标识符的隔离。
+2. 创建arguments对象，以下情况不需要创建：
+   1. 函数是箭头函数。
+   2. 参数中有名为arguments的参数。
+   3. 函数体内有名为arguments的函数或标识符为arguments的词法声明语句。
+```js
+// 全局代码
+fn_example(1)
+function fn_example(normal_arg, expression_arg = 2){
+  console.log(arguments)
+  let fn_let = 3;
+  var fn_var = 4;
+  const fn_const = 5
+  class Fn_class{}
+  function fn_fn(){}
+}
+```
+![alt text](image-3.png)
+
+关于函数的环境记录器的指向问题。
+1. 函数定义处进行声明实例化的时候，会[OrdinaryFunctionCreate](https://ecma262.com/2024/#sec-ordinaryfunctioncreate)创建函数对象,并且 F.[[Environment]] 设置为 env。。
+2. 当函数调用时，创建的函数环境记录器的outenv就会使用这个值。
+```js
+let target = "global"
+a()
+
+function a(){
+    let target = "fn_a"
+    b()
+}
+function b(){
+   console.log(target) // "global"
+}
+```
+![alt text](image-4.png)
+### 闭包

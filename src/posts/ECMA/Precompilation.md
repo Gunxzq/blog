@@ -64,7 +64,7 @@ if(true){ // ④
 
 1. 调用**LexicallyDeclaredNames** 、**VarDeclaredNames**语义收集标识符。
    1. 从结果来看**LexicallyDeclaredNames**只会收集let、const声明语句(只会处理Declaration)的标识符，会忽略所有的函数声明。
-   2. **VarDeclaredNames**对语句递归的调用，收集可见var声明、函数声明的标识符。不会处理函数和类中的。(==这就是var和函数提升==)
+   2. **VarDeclaredNames**对语句递归的调用，收集可见var声明、函数声明的标识符。不会处理**函数和类中的**。
    3. 如果词法声明和变量声明的连接有重复项，则抛出 **SyntaxError** 异常。
 2. 调用**VarScopedDeclarations**语义收集变量声明语句**varDeclarations**，调用**LexicallyScopedDeclarations** 语义收集词法声明语句 **lexDeclarations**。
 3. 最后得到三个列表：**lexDeclarations、varDeclarations、functionsToInitialize**。根据标识符的类型进行绑定
