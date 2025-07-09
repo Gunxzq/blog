@@ -98,7 +98,43 @@ PHP 将尝试将反引号中的内容作为 shell 命令来执行，并将其输
 $output = `ls -al`;
 echo "<pre>$output</pre>";
 ```
-
 :::important
 关闭了 shell_exec() 时反引号运算符是无效的。
 :::
+
+## 数组运算符
+|例子|	名称|	结果|
+|---|---|---|
+|$a + $b	|联合	|把b的数组元素附加到a的数组后面，对于系统的键值对，使用a的|
+|$a == $b	|相等	|如果 $a 和 $b 具有相同的键／值对则为 true。|
+|$a === $b	|全等	|如果 $a 和 $b 具有相同的键／值对并且顺序和类型都相同则为 true。|
+|$a != $b	|不等	|如果 $a 不等于 $b 则为 true。|
+|$a <> $b	|不等	|如果 $a 不等于 $b 则为 true。|
+|$a !== $b	|不全等|	如果 $a 不全等于 $b 则为 true。|
+
+## 类型运算符
+instanceof 用于确定一个 PHP 变量是否属于某一类 class 的实例（即对象）
+```php
+class MyClass{}
+class NotMyClass{}
+$a = new MyClass;
+
+var_dump($a instanceof MyClass);
+var_dump($a instanceof NotMyClass);
+```
+instanceof　也可用来确定一个变量是不是继承自某一父类的子类的实例：
+```php
+class ParentClass{}
+class MyClass extends ParentClass{}
+$a = new MyClass;
+var_dump($a instanceof MyClass);
+var_dump($a instanceof ParentClass);
+```
+instanceof也可用于确定一个变量是不是实现了某个接口的对象的实例:
+```php
+interface MyInterface{}
+class MyClass implements MyInterface{}
+$a = new MyClass;
+var_dump($a instanceof MyClass);
+var_dump($a instanceof MyInterface);
+```
