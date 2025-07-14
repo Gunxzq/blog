@@ -4,6 +4,7 @@ order: 2
 category:
   - ECMA标准
 tag:
+  - 作用域
 
 # sticky: true
 ---

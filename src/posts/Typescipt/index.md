@@ -1,10 +1,9 @@
 ---
-date: 2025-03-7
+date: 2025-03-07
 category:
   - JS框架
 tag:
-  - 小程序
-  - 
+  - typescript
 ---
 
 # Typescript

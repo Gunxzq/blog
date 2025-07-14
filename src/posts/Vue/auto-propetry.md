@@ -4,7 +4,6 @@ category:
   - JS框架
 tag:
   - Vue
-  - 
 ---
 
 # 动态添加属性的问题

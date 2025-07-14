@@ -4,7 +4,7 @@ order: 2
 category:
   - ECMA标准
 tag:
-
+  - ECMA
 # sticky: true
 ---
 
