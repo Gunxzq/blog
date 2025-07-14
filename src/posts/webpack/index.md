@@ -48,7 +48,7 @@ xii.例如，在打包完成后，可以触发一个插件来输出打包文件�
 
 ### 浏览器兼容性(browser compatibility)
 
-Webpack 支持所有符合 ES5 标准 的浏览器（不支持 IE8 及以下版本）。webpack 的 import() 和 require.ensure() 需要 Promise。如果你想要支持旧版本浏览器，在使用这些表达式之前，还需要 提前加载 polyfill。
+Webpack 支持所有符合 ES5 标准 的浏览器（不支持 IE8 及以下版本）。webpack 的 **import()** 和 require.ensure() 需要 Promise。如果你想要支持旧版本浏览器，在使用这些表达式之前，还需要 提前加载 polyfill。
 
 ### 环境(environment)
 
@@ -66,7 +66,7 @@ Webpack 5 运行于 Node.js v10.13.0+ 的版本。
 2.CommonJS require() 语句
 3.AMD define 和 require 语句
 4.css/sass/less 文件中的 @import 语句
-5.stylesheet url(...) 或者 HTML <img src=...> 文件中的图片链接。
+5.stylesheet url(...) 或者 HTML <\img src=...> 文件中的图片链接。
 
 ### 支持的模块类型
 
