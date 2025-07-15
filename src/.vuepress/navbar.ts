@@ -4,7 +4,12 @@ export default navbar([
   "/",
   // "/demo/",
   "/posts/performance/",
-  "/posts/ECMA/"
+  "/posts/ECMA/",
+  "/posts/PHP/",
+  "/posts/Vue/",
+  "/posts/WX/",
+  "/posts/Typescipt/",
+  "posts/webpack/"
   // {
   //   text: "博文",
   //   icon: "pen-to-square",

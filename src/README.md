@@ -13,10 +13,10 @@ projects:
   #   desc: 项目详细描述
   #   link: https://你的项目链接
 
-  # - icon: link
-  #   name: 链接名称
-  #   desc: 链接详细描述
-  #   link: https://链接地址
+  - icon: link
+    name: 即时通讯地址
+    desc: 构建一个即时通讯系统
+    link: https://github.com/Gunxzq/IMSoft
 
   # # - icon: book
   # #   name: 书籍名称

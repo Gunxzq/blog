@@ -6,7 +6,7 @@ category:
   - 性能优化
 ---
 
-<Catalog />
+<!-- <Catalog /> -->
 
 ## **性能优化指标**
 
