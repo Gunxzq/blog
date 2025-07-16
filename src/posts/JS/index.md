@@ -1,13 +1,13 @@
 ---
-title: JS
+# title: JS
 date: 2025-03-15
-index: false
-icon: laptop-code
+# index: false
+# icon: laptop-code
 category:
   - JavaScript
 ---
 
-<Catalog />
+<!-- <Catalog /> -->
 
 # JavaScript
 
@@ -36,21 +36,26 @@ _proto_属性构建了对象的原型链
 
 ### this表达式的求值
 1. 从作用域链上寻找第一个有绑定this值的环境记录器，然后获取该环境记录器上的this值
-|作用域类型|this指向|
-|---|---|
-|全局|全局对象|
-|模块|undefined|
-|块级|无|
-|with|无|
-|函数|返回[[ThisValue]]字段的值|
+
+| 作用域类型 | this指向 |
+|---|---| 
+| 全局 | 全局对象 |
+| 模块 | undefined |
+| 块级 | 无 |
+| with | 无 |
+| 函数 | 返回 **[[ThisValue]]** 字段的值 |
+
 2. 函数作用域的this解析
+
 |调用方法|this指向|方法|
 |---|---|---|
 |显示绑定|严格模式：this参数的值，非严格模式：this参数转化为对象|apply、bind、Array.prototype.map等可显式绑定this值的API|
 |对象方法|对象自身|call|
 |new构造器|以prototype属性为原型创建的对象|new|
 |普通调用|严格模式：undefined，非严格模式：globalThis|call|
-注意
+
+:::important
+
 ```js
 // 需要注意的是：以下的情况是普通调用，而不是作为方法调用：
 const trick = obj.ordinaryMethod
@@ -110,6 +115,7 @@ const object = {
 
 object.method(callback, 1, 2);
 ```
+:::
 
 ## 显示绑定：bind、call、apply的区别
 call、bind、apply作用是改变函数执行时的上下文
@@ -543,10 +549,20 @@ const pipe = (...fns)=>val=>fns.reduce((acc,fn)=>fn(acc),val);
 利用受害者在被攻击网站已经获取的注册凭证，绕过后台的用户验证，达到冒充用户对被攻击网站执行某些操作的目的
 ## SQL注入攻击
 
+Sql 注入攻击，是通过将恶意的 Sql 查询或添加语句插入到应用的输入参数中，再在后台 Sql 服务器上解析执行进行的攻击
 
 
+流程如下所示：
+- 找出SQL漏洞的注入点
+- 判断数据库的类型以及版本
+- 猜解用户名和密码
+- 利用工具查找Web后台管理入口
+- 入侵和破坏
 
-
+预防方式如下：
+- 严格检查输入变量的类型和格式
+- 过滤和转义特殊字符
+- 对访问数据库的Web应用程序采用Web应用防火墙
 
 
 

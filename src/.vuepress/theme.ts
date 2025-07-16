@@ -73,6 +73,7 @@ export default hopeTheme({
     demo: true,
     figure: true,
     gfm: true,
+    flowchart: true,
     // 懒加载
     imgLazyload: true,
     imgSize: true,
