@@ -9,7 +9,7 @@ export default hopeTheme({
   hostname: "https://mister-hope.github.io",
   darkmode:'toggle',
   author: {
-    name: "xzq",
+    name: "桔梗",
     url: "https://mister-hope.com",
   },
 // 网站图标
@@ -33,16 +33,13 @@ export default hopeTheme({
   // 博客相关
   blog: {
     avatar:"/avater.jpg",
-    description: "一个前端开发者",
+    description: "什么都想试试的全干牛马",
     // 介绍页
     intro: "/intro.html",
     // sidebarDisplay:"always",
     medias: {
-      Github:"https://github.com/Gunxzq"
-      // VuePressThemeHope: {
-      //   icon: "https://theme-hope-assets.vuejs.press/logo.svg",
-      //   link: "https://theme-hope.vuejs.press",
-      // },
+      Github:"https://github.com/Gunxzq",
+     BiliBili:"https://space.bilibili.com/505695397?spm_id_from=333.1007.0.0"
     },
   },
 

@@ -4,7 +4,7 @@ layout: BlogHome
 icon: house
 title: 博客主页
 heroImage: /assets/images/cover2.jpg
-heroText: Gunxzq
+heroText: 桔梗
 heroFullScreen: true
 tagline: 学习最准确的知识
 projects:
@@ -13,10 +13,10 @@ projects:
   #   desc: 项目详细描述
   #   link: https://你的项目链接
 
-  - icon: link
-    name: 即时通讯地址
-    desc: 构建一个即时通讯系统
-    link: https://github.com/Gunxzq/IMSoft
+  # - icon: link
+  #   name: 即时通讯地址
+  #   desc: 构建一个即时通讯系统
+  #   link: https://github.com/Gunxzq/IMSoft
 
   # # - icon: book
   # #   name: 书籍名称
