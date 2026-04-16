@@ -2,6 +2,7 @@
 date: 2025-03-25
 category:
   - CSS
+  - 前端
 ---
 
 # CSS 滚动视差效果

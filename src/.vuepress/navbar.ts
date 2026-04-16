@@ -2,13 +2,7 @@ import { navbar } from "vuepress-theme-hope";
 
 export default navbar([
   "/",
-  "/posts/performance/",
   "/posts/ECMA/",
-  "/posts/PHP/",
-  "/posts/Vue/",
-  "/posts/WX/",
-  "/posts/Typescipt/",
-  "posts/webpack/"
   // {
   //   text: "博文",
   //   icon: "pen-to-square",
