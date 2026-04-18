@@ -98,6 +98,10 @@ git-stats --raw | git-stats-html -o stats.html
 
 ```sh
 #!/usr/bin/env sh
+# 设置终端环境变量，解决 cli-gh-cal 的 window-size 依赖问题
+export COLUMNS=120
+export ROWS=30
+
 . "$(dirname -- "$0")/_/husky.sh"
 
 echo "🔄 正在更新代码热力图..."
@@ -126,28 +130,18 @@ fi
 > **邮箱匹配**：如果提交记录有多个邮箱，需分别运行 `git-stats-importer -e "邮箱A"` 和 `git-stats-importer -e "邮箱B"`
 
 > [!WARNING]
-> **PowerShell 环境兼容**：`git-stats` 依赖的 `window-size` 模块在 PowerShell 非 TTY 环境下会返回 `undefined`，导致报错 `Cannot read properties of undefined (reading 'width')`
+> **VSCode 提交报错**：`git-stats` 依赖的 `window-size` 模块在非 TTY 环境下会返回 `undefined`，导致报错 `Cannot read properties of undefined (reading 'width')`
 
-### 解决方案：修复 ps1 shim 文件
+### 解决方案：在 pre-commit 钩子中设置环境变量
 
-> [!TIP]
-> Windows 下 npm 全局脚本通过 `.ps1` shim 文件调用，需要为 `git-stats` 和 `git-stats-html` 都添加环境变量修复
+> [!IMPORTANT]
+> Husky 通过 Git Bash (`sh`) 执行钩子脚本，修改 `.ps1` 或 `.cmd` shim 文件**对 Husky 无效**，因为 Git Bash 不会解析这些文件。
 
-需要修复以下 **两个文件**：
+在 `.husky/pre-commit` 的 `#!/usr/bin/env sh` 下方添加：
 
-1. `git-stats.ps1`
-2. `git-stats-html.ps1`
-
-在这些脚本开头添加：
-
-```powershell
-# 设置终端大小环境变量，避免 window-size 返回 undefined
-if (-not $env:COLUMNS) { $env:COLUMNS = "120" }
-if (-not $env:ROWS) { $env:ROWS = "30" }
+```sh
+export COLUMNS=120
+export ROWS=30
 ```
 
-> [!NOTE]
-> 完整路径可能为：
-> - `D:\Dev\nvm\nodejs\git-stats.ps1` / `git-stats-html.ps1`
-> - `D:\Dev\nvm\v20.19.5\git-stats.ps1` / `git-stats-html.ps1`
-> - `C:\Users\你的用户名\AppData\Roaming\npm\git-stats.ps1`
+这种方式确保无论通过何种路径调用 `git-stats`，环境变量都已就位。
