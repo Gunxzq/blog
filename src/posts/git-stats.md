@@ -13,7 +13,7 @@ top: true
 - **post-commit 钩子**：记录 commit hash、repo url、commit date 到 `~/.git-stats` 数据库
 - **pre-commit 钩子**（Husky）：每次提交后自动调用 `git-stats-html` 生成热力图
 
-<!-- 测试提交 -->
+
 
 ## 前置依赖
 
