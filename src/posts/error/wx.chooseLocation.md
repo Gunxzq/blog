@@ -2,6 +2,9 @@
 date: 2026-04-16
 category:
   - error
+  - 微信小程序
+tag:
+  - API
 ---
 
 
