@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# 👇 更新代码热力图
+echo "🔄 正在更新代码热力图..."
+
+# 检查命令是否存在，避免因为缺少依赖导致提交失败
+if command -v git-stats >/dev/null 2>&1 && command -v git-stats-html >/dev/null 2>&1; then
+    # 生成热力图，如果失败则打印警告但不阻止提交（可根据需求改为 exit 1）
+    if git-stats --raw | git-stats-html -o src/.vuepress/public/stats.html; then
+        git add src/.vuepress/public/stats.html
+        echo "✅ 代码热力图已更新"
+    else
+        echo "⚠️ 代码热力图生成失败，请检查 git-stats 配置"
+    fi
+else
+    echo "⚠️ git-stats 或 git-stats-html 未安装，跳过热力图更新"
+fi

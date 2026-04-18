@@ -33,8 +33,8 @@ export default hopeTheme({
   // 博客相关
   blog: {
     avatar:"/avater.jpg",
-    description: "什么都想试试的全干牛马",
-    // 介绍页
+    description: "什么都想试试",
+    // 介绍页,设法内嵌信息
     intro: "/intro.html",
     // sidebarDisplay:"always",
     medias: {
@@ -42,6 +42,7 @@ export default hopeTheme({
      BiliBili:"https://space.bilibili.com/505695397?spm_id_from=333.1007.0.0"
     },
   },
+  // pageInfo:[],
 
   // 加密配置
   encrypt: {
