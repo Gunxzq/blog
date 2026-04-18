@@ -1,17 +1,26 @@
 ---
 date: 2026-04-19
+top: true
 ---
 
 # 通过 Git 生成热力贡献图并同步博客
+
+## 工作原理
+
+> [!INFO]
+> `git-stats` 依赖 **post-commit 钩子** 在每次提交时记录数据，配合 **pre-commit 钩子** 自动生成图表
+
+- **post-commit 钩子**：记录 commit hash、repo url、commit date 到 `~/.git-stats` 数据库
+- **pre-commit 钩子**（Husky）：每次提交后自动调用 `git-stats-html` 生成热力图
 
 ## 前置依赖
 
 > [!TIP]
 > 以下三个 npm 包配合使用，实现从数据记录到图表生成的全流程
 
-- `git-stats`：核心数据库，负责记录你的提交数据
-- `git-stats-html`：生成器，把数据读取出来画成网页图表
-- `git-stats-importer`：时光机，把历史 Git 记录导入到数据库
+```bash
+npm install -g git-stats git-stats-html git-stats-importer
+```
 
 ## 步骤一：确认 Git 邮箱
 
@@ -22,7 +31,31 @@ date: 2026-04-19
 git config user.email "你的邮箱"
 ```
 
-## 步骤二：导入历史数据
+## 步骤二：安装全局钩子
+
+> [!NOTE]
+> 这一步让你的 Git 模板自动包含 post-commit 钩子，新克隆/初始化的仓库会自动获得钩子
+
+运行 PowerShell 脚本（会自动为 `D:\project` 下所有 Git 仓库安装钩子）：
+
+```powershell
+# 克隆或下载 Update-GitStatsHooks.ps1 后运行
+.\Update-GitStatsHooks.ps1
+```
+
+> [!TIP]
+> 脚本会扫描指定目录下的所有 Git 项目，为其安装 post-commit 钩子
+
+**post-commit 钩子核心逻辑**：
+```sh
+commit_hash=$(git rev-parse HEAD)
+repo_url=$(git config --get remote.origin.url)
+commit_date=$(git log -1 --format=%cI)
+commit_data="{ \"date\": \"$commit_date\", \"url\": \"$repo_url\", \"hash\": \"$commit_hash\" }"
+git-stats --record "${commit_data}"
+```
+
+## 步骤三：导入历史数据
 
 > [!NOTE]
 > `git-stats` 不会自动记录历史，需要手动导入一次
@@ -37,18 +70,18 @@ git-stats-importer -e "你的邮箱"
 > [!TIP]
 > 如果你有多个项目（公司项目、个人项目），需要分别进入每个项目目录运行此命令
 
-## 步骤三：生成 HTML 图表
+## 步骤四：生成 HTML 图表
 
 ```bash
 git-stats --raw | git-stats-html -o stats.html
 ```
 
-## 步骤四：集成到 VuePress
+## 步骤五：集成到 VuePress
 
 1. 将生成的 `stats.html` 移动到 `VuePress/public/` 目录
 2. 在 Markdown 文件中使用 `<iframe src="/stats.html">` 引用
 
-## 步骤五：配置自动化钩子
+## 步骤六：配置自动化钩子
 
 > [!TIP]
 > 配置好 Husky 钩子后，每次提交代码会自动更新热力图
@@ -79,7 +112,7 @@ fi
 > **全局统计**：`git-stats` 的图表永远是你所有项目的总和，无法生成"仅当前项目"的热力图
 
 > [!WARNING]
-> **数据持久化**：数据库文件在 `~/.git-stats`，重装系统后需重新运行步骤二恢复数据
+> **数据持久化**：数据库文件在 `~/.git-stats`，重装系统后需重新运行步骤三恢复数据
 
 > [!WARNING]
 > **邮箱匹配**：如果提交记录有多个邮箱，需分别运行 `git-stats-importer -e "邮箱A"` 和 `git-stats-importer -e "邮箱B"`
