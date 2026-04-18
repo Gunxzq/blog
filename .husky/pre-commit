@@ -12,8 +12,12 @@ echo "🔄 正在更新代码热力图..."
 if command -v git-stats >/dev/null 2>&1 && command -v git-stats-html >/dev/null 2>&1; then
     # 生成热力图，如果失败则打印警告但不阻止提交（可根据需求改为 exit 1）
     if git-stats --raw | git-stats-html -o src/.vuepress/public/stats.html; then
-        # 禁止浏览器缓存 stats.html
-        sed -i '1i\<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">\n<meta http-equiv="Pragma" content="no-cache">\n<meta http-equiv="Expires" content="0">' src/.vuepress/public/stats.html
+        # 禁止浏览器缓存 stats.html（插入到 <head> 标签内）
+        awk '{print} /<head>/ {
+            print "        <meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\">"
+            print "        <meta http-equiv=\"Pragma\" content=\"no-cache\">"
+            print "        <meta http-equiv=\"Expires\" content=\"0\">"
+        }' src/.vuepress/public/stats.html > src/.vuepress/public/stats.html.tmp && mv src/.vuepress/public/stats.html.tmp src/.vuepress/public/stats.html
         git add src/.vuepress/public/stats.html
         echo "✅ 代码热力图已更新"
     else
