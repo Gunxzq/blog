@@ -126,12 +126,17 @@ fi
 > [!WARNING]
 > **PowerShell 环境兼容**：`git-stats` 依赖的 `window-size` 模块在 PowerShell 非 TTY 环境下会返回 `undefined`，导致报错 `Cannot read properties of undefined (reading 'width')`
 
-### 解决方案：修复 git-stats.ps1
+### 解决方案：修复 ps1 shim 文件
 
 > [!TIP]
-> Windows 下 npm 全局脚本通过 `.ps1` shim 文件调用，需要添加环境变量修复
+> Windows 下 npm 全局脚本通过 `.ps1` shim 文件调用，需要为 `git-stats` 和 `git-stats-html` 都添加环境变量修复
 
-编辑 `D:\Dev\nvm\nodejs\git-stats.ps1`（或你的 npm 全局路径），在脚本开头添加：
+需要修复以下 **两个文件**：
+
+1. `git-stats.ps1`
+2. `git-stats-html.ps1`
+
+在这些脚本开头添加：
 
 ```powershell
 # 设置终端大小环境变量，避免 window-size 返回 undefined
@@ -140,4 +145,7 @@ if (-not $env:ROWS) { $env:ROWS = "30" }
 ```
 
 > [!NOTE]
-> 完整路径可能为：`D:\Dev\nvm\nodejs\git-stats.ps1`、`C:\Users\你的用户名\AppData\Roaming\npm\git-stats.ps1`
+> 完整路径可能为：
+> - `D:\Dev\nvm\nodejs\git-stats.ps1` / `git-stats-html.ps1`
+> - `D:\Dev\nvm\v20.19.5\git-stats.ps1` / `git-stats-html.ps1`
+> - `C:\Users\你的用户名\AppData\Roaming\npm\git-stats.ps1`
