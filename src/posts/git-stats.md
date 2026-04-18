@@ -22,6 +22,11 @@ top: true
 npm install -g git-stats git-stats-html git-stats-importer
 ```
 
+**当前安装版本**：
+- `git-stats@3.5.0` - 核心数据库
+- `git-stats-html@1.0.10` - HTML 图表生成器
+- `git-stats-importer@2.4.13` - 历史数据导入工具
+
 ## 步骤一：确认 Git 邮箱
 
 > [!IMPORTANT]
@@ -117,3 +122,22 @@ fi
 
 > [!WARNING]
 > **邮箱匹配**：如果提交记录有多个邮箱，需分别运行 `git-stats-importer -e "邮箱A"` 和 `git-stats-importer -e "邮箱B"`
+
+> [!WARNING]
+> **PowerShell 环境兼容**：`git-stats` 依赖的 `window-size` 模块在 PowerShell 非 TTY 环境下会返回 `undefined`，导致报错 `Cannot read properties of undefined (reading 'width')`
+
+### 解决方案：修复 git-stats.ps1
+
+> [!TIP]
+> Windows 下 npm 全局脚本通过 `.ps1` shim 文件调用，需要添加环境变量修复
+
+编辑 `D:\Dev\nvm\nodejs\git-stats.ps1`（或你的 npm 全局路径），在脚本开头添加：
+
+```powershell
+# 设置终端大小环境变量，避免 window-size 返回 undefined
+if (-not $env:COLUMNS) { $env:COLUMNS = "120" }
+if (-not $env:ROWS) { $env:ROWS = "30" }
+```
+
+> [!NOTE]
+> 完整路径可能为：`D:\Dev\nvm\nodejs\git-stats.ps1`、`C:\Users\你的用户名\AppData\Roaming\npm\git-stats.ps1`
