@@ -117,18 +117,18 @@ export default hopeTheme({
     // },
 
     // 在启用之前安装 chart.js
-    // chartjs: true,
+    chartjs: true,
 
     // insert component easily
 
     // 在启用之前安装 echarts
-    // echarts: true,
+    echarts: true,
 
     // 在启用之前安装 flowchart.ts
     // flowchart: true,
 
     // 在启用之前安装 mermaid
-    // mermaid: true,
+    mermaid: true,
 
     // playground: {
     //   presets: ["ts", "vue"],
