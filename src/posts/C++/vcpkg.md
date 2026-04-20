@@ -1,6 +1,5 @@
 ---
 date: 2026-04-17
-order: 2
 category:
   - C++
 tag:
