@@ -313,7 +313,6 @@ graph TB
 | **接口契约** | Context 中只声明接口类型（IRenderer*），不声明具体类型（DX12Renderer*） |
 | **所有权分离** | Context 持有指针但不负责销毁，由创建者（Bootstrap）负责生命周期 |
 | **可扩展性** | 新增能力只需在 Context 中添加新指针，无需修改 Game |
-| **可测试性** | 可以创建 MockContext 注入测试环境 |
 
 ---
 
