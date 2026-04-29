@@ -13,10 +13,10 @@ tag:
 
 Context 是游戏引擎的**中间层**，作为 Bootstrap 和 Game 之间的**数据容器和接口契约**。
 
-| 职责定位 | 说明 |
-|:--------|:-----|
-| **做什么** | 持有能力指针（Window、Renderer、Logging 等），定义接口契约 |
-| **不做什么** | 不创建对象、不执行业务逻辑、不持有状态 |
+| 职责定位     | 说明                                                       |
+| :----------- | :--------------------------------------------------------- |
+| **做什么**   | 持有能力指针（Window、Renderer、Logging 等），定义接口契约 |
+| **不做什么** | 不创建对象、不执行业务逻辑、不持有状态                     |
 
 **设计哲学**：Context 是"容器 + 接口"，它定义了 Game 需要使用哪些能力，但不关心这些能力如何创建。它解耦了"使用者"（Game）和"提供者"（Bootstrap）。
 
@@ -42,12 +42,12 @@ Bootstrap ──→ Context ──→ Game
 
 ### 2.2 Context vs 具体能力
 
-| 维度 | Context | 具体能力 (如 IRenderer) |
-|:-----|:--------|:------------------------|
-| **本质** | 容器（Container） | 服务接口（Service Interface） |
-| **职责** | 持有指针、定义变量 | 定义"能做什么"（Draw、Clear） |
-| **生命周期** | 创建由 Bootstrap 管理 | 创建由 Bootstrap 管理 |
-| **使用方式** | 被 Game 持有并访问 | Game 通过 Context 间接使用 |
+| 维度         | Context               | 具体能力 (如 IRenderer)       |
+| :----------- | :-------------------- | :---------------------------- |
+| **本质**     | 容器（Container）     | 服务接口（Service Interface） |
+| **职责**     | 持有指针、定义变量    | 定义"能做什么"（Draw、Clear） |
+| **生命周期** | 创建由 Bootstrap 管理 | 创建由 Bootstrap 管理         |
+| **使用方式** | 被 Game 持有并访问    | Game 通过 Context 间接使用    |
 
 ### 2.3 能力流动
 
@@ -114,13 +114,13 @@ class Bootstrap {
 public:
     GameContext* CreateContext() {
         auto ctx = new GameContext();
-        
+
         // 创建具体实现
         ctx->Window    = new DX12Window();
         ctx->Renderer  = new DX12Renderer();
         ctx->Logging    = new FileLogging();
         ctx->Config     = new JsonConfigManager();
-        
+
         return ctx;
     }
 };
@@ -306,13 +306,13 @@ graph TB
 
 ## 5. Context 的设计原则
 
-| 原则 | 说明 |
-|:-----|:-----|
-| **纯数据容器** | 只包含指针和 getter/setter，不包含业务逻辑 |
-| **单一注入点** | Game 通过一个 Context 对象获取所有能力 |
-| **接口契约** | Context 中只声明接口类型（IRenderer*），不声明具体类型（DX12Renderer*） |
-| **所有权分离** | Context 持有指针但不负责销毁，由创建者（Bootstrap）负责生命周期 |
-| **可扩展性** | 新增能力只需在 Context 中添加新指针，无需修改 Game |
+| 原则           | 说明                                                                    |
+| :------------- | :---------------------------------------------------------------------- |
+| **纯数据容器** | 只包含指针和 getter/setter，不包含业务逻辑                              |
+| **单一注入点** | Game 通过一个 Context 对象获取所有能力                                  |
+| **接口契约**   | Context 中只声明接口类型（IRenderer*），不声明具体类型（DX12Renderer*） |
+| **所有权分离** | Context 持有指针但不负责销毁，由创建者（Bootstrap）负责生命周期         |
+| **可扩展性**   | 新增能力只需在 Context 中添加新指针，无需修改 Game                      |
 
 ---
 
@@ -320,12 +320,12 @@ graph TB
 
 ### 6.1 职责边界
 
-| 操作 | Bootstrap | Context | Game |
-|:-----|:---------:|:-------:|:----:|
-| 创建具体对象 | ✅ | ❌ | ❌ |
-| 持有能力指针 | ❌ | ✅ | ❌ |
-| 使用能力 | ❌ | ❌ | ✅ |
-| 管理生命周期 | 创建 | 不负责 | 触发释放 |
+| 操作         | Bootstrap | Context |   Game   |
+| :----------- | :-------: | :-----: | :------: |
+| 创建具体对象 |    ✅     |   ❌    |    ❌    |
+| 持有能力指针 |    ❌     |   ✅    |    ❌    |
+| 使用能力     |    ❌     |   ❌    |    ✅    |
+| 管理生命周期 |   创建    | 不负责  | 触发释放 |
 
 ### 6.2 类型可见性
 
@@ -360,13 +360,13 @@ class Game {
 
 随着引擎发展，Context 可逐步添加：
 
-| 阶段 | 新增能力 | 说明 |
-|:----:|:--------|:-----|
-| Phase 1 | MemoryAllocator* | 内存管理器指针 |
-| Phase 1 | FileSystem* | 文件系统指针 |
-| Phase 2 | InputSystem* | 输入系统指针 |
-| Phase 2 | AudioSystem* | 音频系统指针 |
-| Phase 3 | PhysicsSystem* | 物理系统指针 |
-| Phase 3 | AISystem* | AI 系统指针 |
+|  阶段   | 新增能力          | 说明           |
+| :-----: | :---------------- | :------------- |
+| Phase 1 | MemoryAllocator\* | 内存管理器指针 |
+| Phase 1 | FileSystem\*      | 文件系统指针   |
+| Phase 2 | InputSystem\*     | 输入系统指针   |
+| Phase 2 | AudioSystem\*     | 音频系统指针   |
+| Phase 3 | PhysicsSystem\*   | 物理系统指针   |
+| Phase 3 | AISystem\*        | AI 系统指针    |
 
 所有新增能力遵循相同模式：在 Context 中添加接口指针 → Bootstrap 填充 → Game 使用。
