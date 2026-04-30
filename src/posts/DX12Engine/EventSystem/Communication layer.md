@@ -13,16 +13,57 @@ tag:
 
 ---
 
+## 通信层架构
+
+```mermaid
+graph TB
+    subgraph 通信层组件
+        ARENA["全局消息缓冲区<br/>(Message Arena)"]
+        BM["桶管理器<br/>(BucketManager)"]
+        B0["P0 桶<br/>SystemAlertBucket"]
+        B1["P1 桶<br/>PhysicsEventBucket"]
+        B2["P2 桶<br/>GameLogicBucket"]
+        B3["P3 桶<br/>RenderCommandBucket"]
+        B4["P4 桶<br/>BackgroundBucket"]
+    end
+
+    subgraph 生产者
+        PT["物理线程"]
+        UT["UI 线程"]
+        GT["游戏逻辑线程"]
+    end
+
+    subgraph 消费者
+        SCHED["调度器"]
+        SYS["Systems"]
+    end
+
+    PT -->|"写入索引"| B0
+    PT -->|"写入索引"| B1
+    UT -->|"写入索引"| B3
+    GT -->|"写入索引"| B2
+
+    B0 & B1 & B2 & B3 & B4 -->|"管理"| BM
+    BM -->|"扫描+排序"| SCHED
+    SCHED -->|"取出消息"| SYS
+
+    PT -->|"写入消息"| ARENA
+    UT -->|"写入消息"| ARENA
+    GT -->|"写入消息"| ARENA
+    SCHED -->|"读取元数据"| ARENA
+```
+
 ## 一、桶的优先级
 
-系统中的桶按优先级分为四层：
+系统中的桶按优先级分为五层：
 
-| 优先级 | 桶名称 | 示例事件 |
-|:------:|:-------|:---------|
-| P0 | SystemAlertBucket | 内存溢出、强制退出 |
-| P1 | PhysicsEventBucket | 碰撞、触发器 |
-| P2 | GameLogicBucket | 扣血、技能释放 |
-| P3 | RenderCommandBucket | 播放特效、UI刷新 |
+| 优先级 | 桶名称 | 示例事件 | 丢弃策略 |
+|:------:|:-------|:---------|:---------|
+| P0 | SystemAlertBucket | 内存溢出、强制退出 | None |
+| P1 | PhysicsEventBucket | 碰撞、触发器 | None |
+| P2 | GameLogicBucket | 扣血、技能释放 | None |
+| P3 | RenderCommandBucket | 播放特效、UI刷新 | Sample |
+| P4 | BackgroundBucket | 资源加载结果 | Throttle |
 
 ---
 
@@ -37,11 +78,11 @@ tag:
 │  Type Buffer    │ 1, 1, 2, 3, 1, 4, ...            │
 │  (uint16_t)     │ 连续存储所有消息的类型            │
 ├─────────────────────────────────────────────────────┤
-│  Sender Buffer   │ E1, E2, E3, E4, ...              │
+│  Sender Buffer   │ E1, E2, E3, E4, ...             │
 │  (uint32_t)     │ 发送者 Entity ID                 │
 ├─────────────────────────────────────────────────────┤
 │  Payload Ptr    │ PtrA, PtrB, PtrC, ...            │
-│  (void*)        │ 指向资源管理器中的资源句柄      │
+│  (void*)        │ 指向资源管理器中的资源句柄        │
 ├─────────────────────────────────────────────────────┤
 │  Timestamp      │ T1, T2, T3, ...                  │
 │  (uint64_t)     │ 时间戳，用于调试和排序            │
@@ -53,7 +94,7 @@ tag:
 **设计要点：**
 
 - 调度器只需要读 **Type** 和 **Sender**：CPU 可一次性把几万条 Message_Type_ID 读入缓存过滤
-- Payload 只存指针：真正的数据在资源管理器中，通信层只负责"通知"，调度层在处理消息的将数据层Entt的引用指针更新为新的资源。
+- Payload 只存指针：真正的数据在资源管理器中，通信层只负责"通知"，调度层在处理消息的将数据层 Entt 的引用指针更新为新的资源。
 
 ---
 
@@ -71,7 +112,7 @@ tag:
 
 | 职责 | 说明 |
 |:-----|:-----|
-| 持有所有桶 | 管理 P0-P3 以及用户自定义桶的指针 |
+| 持有所有桶 | 管理 P0-P4 以及用户自定义桶的指针 |
 | 收集分数 | 遍历所有桶，询问"你们现在的最终优先级是多少？" |
 | 排序/筛选 | 维护"活跃桶列表"，只有非空的桶参与排序 |
 
@@ -96,7 +137,7 @@ __builtin_ctz(activeMask)       // O(1) 复杂度找到最高优先级桶
 | **Aging** | 动态 | 桶的"焦急程度"，随积压时间累加 |
 | **Effective Priority** | 计算结果 | 调度器的排序依据 |
 
-> 💡 Aging 机制防止低优先级任务"饿死"：如果 P3 桶积压 100ms，它的权重会自动飙升。
+> Aging 机制防止低优先级任务"饿死"：如果 P3 桶积压 100ms，它的权重会自动飙升。
 
 ### 3.3 丢弃策略
 
@@ -122,7 +163,7 @@ __builtin_ctz(activeMask)       // O(1) 复杂度找到最高优先级桶
 | 聊天消息 | 低 | 防抖 | 调用方 |
 | 系统日志 | 极高 | 丢弃 | 桶内部 |
 
-> ⚠️ **最佳实践**：调用方负责业务防抖，桶负责通用节流。
+> **最佳实践**：调用方负责业务防抖，桶负责通用节流。
 
 ### 4.2 调用方示例
 
@@ -153,7 +194,7 @@ if (Time::Now() - lastClickTime > 0.5f) {
    │ 软限制   │            │ 硬限制   │
    │ 桶提供   │            │ 调度器提供│
    └─────────┘            └─────────┘
-   
+
    PhysicsBucket: 10条    帧时间: 0.5ms
    LogBucket: 100条       实际可用: 20条
 ```
@@ -222,4 +263,4 @@ if (Time::Now() - lastClickTime > 0.5f) {
 | **Resource Manager** | 管理资源 |
 | **Bucket + Arena** | 负责通信 |
 
-> 🎯 **通信层的核心思想**：让事件告诉系统该怎么做，而不是让系统去猜测。
+> **通信层的核心思想**：让事件告诉系统该怎么做，而不是让系统去猜测。

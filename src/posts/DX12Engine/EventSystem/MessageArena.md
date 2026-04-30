@@ -11,6 +11,39 @@ tag:
 
 一块预分配的、巨大的连续内存池。它不存储具体的游戏逻辑（那是 ENTT 的事），它只存储 **"正在飞行中的消息"** 。
 
+## Arena 组件关系
+
+```mermaid
+graph TB
+    subgraph 生产者
+        PT["物理线程"]
+        UT["UI 线程"]
+        IO["IO 线程"]
+    end
+
+    subgraph Arena
+        TYPE["Type Stream<br/>uint16_t[]"]
+        SENDER["Sender Stream<br/>uint32_t[]"]
+        PAYLOAD["Payload Stream<br/>void*[]"]
+        TIME["Time Stream<br/>uint64_t[]"]
+    end
+
+    subgraph 消费者
+        BM["桶管理器"]
+        SCHED["调度器"]
+        SYS["Systems"]
+    end
+
+    PT -->|"原子分配索引"| TYPE
+    PT -->|"写入 TypeID"| TYPE
+    UT -->|"写入 Sender"| SENDER
+    IO -->|"写入 Handle"| PAYLOAD
+    BM -->|"读取 TimeStamp"| TIME
+    SCHED -->|"读取 Type+Sender"| TYPE
+    SCHED -->|"查询 Handle"| PAYLOAD
+    SYS -->|"处理消息"| SCHED
+```
+
 ## 场景
 
 传统的 AoS (Array of Structures) 存储消息：
@@ -94,3 +127,33 @@ Arena 是通信层的**地基**，它与上层组件的依赖关系如下：
 
 ---
 
+## 缓存友好设计 (Cache-Friendly Design)
+
+为了实现极致的缓存命中率（Cache Hit），我们需要让数据的读取步长与 L1 缓存行（Cache Line）对齐。
+
+### 核心物理参数
+
+| 参数 | 值 | 说明 |
+|:-----|:---|:-----|
+| L1/L2 缓存行宽度 | **64 Bytes** | 几乎所有现代 x86_64 和 ARM 架构 |
+| Slot 大小 | **4 Bytes** | uint32_t 或指针大小 |
+
+### 最佳批处理大小计算
+
+为了填满一个 Cache Line，Arena 在进行批量读取（如调度器扫描 Type 或 Index）时，最佳的单位是：
+
+```
+64 Bytes (Cache Line) ÷ 4 Bytes/Slot = 16 Slots
+```
+
+### SIMD 友好边界
+
+现代 CPU（尤其是支持 AVX2/AVX-512 的）喜欢 **32 或 64 字节对齐**的数据块。推荐将 Arena 的读写单位定义为 **16 或 32 的倍数**。
+
+### 设计建议
+
+1. **结构体对齐**：使用 `alignas(64)` 确保 `MessageArena` 内部数组起始地址是 64 Bytes 对齐
+2. **批处理单位**：尽量以 **16 个 Slot** 为一组进行迭代
+3. **SIMD 优化**：若使用 SIMD 指令集，可进一步扩展到 **64 Slots (256 Bytes)** 以获得 AVX-512 的最佳吞吐
+
+> **结论**：CPU 每次从内存中抓取数据，都能刚好填满一个 L1 Cache Line，没有浪费。

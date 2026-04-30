@@ -12,6 +12,36 @@ tag:
 
 核心原则：**分层隔离**。系统分为四层，每层只与相邻层交互。
 
+## 架构总览
+
+```mermaid
+graph TB
+    subgraph L4["L4 应用层"]
+        SM["状态机<br/>业务逻辑、AI决策"]
+    end
+
+    subgraph L3["L3 调度层"]
+        DAG["依赖图<br/>任务排序、死锁检测"]
+    end
+
+    subgraph L2["L2 数据层"]
+        TB["任务桶<br/>ECS Systems、批处理"]
+    end
+
+    subgraph L1["L1 通信层"]
+        MB["消息桶<br/>跨线程通信、事件暂存"]
+        ARENA["全局消息缓冲区<br/>SoA 内存池"]
+        BUCKETS["优先级桶 P0-P4<br/>ConcurrentQueue"]
+    end
+
+    SM -->|"状态转移事件"| DAG
+    DAG -->|"任务调度"| TB
+    TB -->|"批处理执行"| MB
+    MB -->|"消息入队"| BUCKETS
+    MB -->|"写入索引"| ARENA
+    ARENA -->|"元数据读取"| BUCKETS
+```
+
 ## 四层架构
 
 | 层级 | 名称 | 核心组件 | 职责 |
