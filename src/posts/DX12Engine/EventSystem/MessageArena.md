@@ -34,7 +34,7 @@ Message buffer[10000];
 | :--- | :--- | :--- |
 | **Type Stream** | 消息类型 ID (uint16_t) | 调度器 (高频读取) |
 | **Sender Stream** | 发送者 ID (uint32_t) | 调度器 (过滤) |
-| **Payload Stream** | 指向 ENTT 组件的指针 (void*) | 消费者 (处理逻辑) |
+| **Payload Stream** | 指向资源管理器中的资源句柄  (void*) | 消费者 (处理逻辑) |
 | **Time Stream** | 时间戳 (uint64_t) | 桶管理器 (计算 Aging) |
 
 - **对齐策略**：每个 Stream 内部按 **64 Bytes (Cache Line)** 对齐，防止不同 Stream 之间的伪共享。
@@ -75,7 +75,7 @@ Arena 是通信层的**地基**，它与上层组件的依赖关系如下：
 1. **资源管理器 (Resource Manager)**
    - 关系：**无关**。Arena 只存指针，不存资源。资源由资源管理器独立管理。
 2. **ENTT (ECS 框架)**
-   - 关系：**宿主与访客**。Arena 中的 `Payload` 只是指向 ENTT 组件的指针。Arena 负责"通知"，ENTT 负责"状态"。
+   - 关系：**宿主与访客**。Arena 中的 `Payload` 只是指向资源管理器中的资源句柄 。Arena 负责"通知"，调度器负责更新ENTT的"状态"。
 3. **桶管理器 (BucketManager)**
    - 关系：**数据与索引**。BucketManager 持有桶（ConcurrentQueue），桶里存的是 Arena 的下标。BucketManager 通过下标去 Arena 里读取数据来计算优先级。
 4. **调度器 (Scheduler)**
@@ -94,4 +94,3 @@ Arena 是通信层的**地基**，它与上层组件的依赖关系如下：
 
 ---
 
-这就是为什么我们在 2026 年的今天，依然要坚持手写这个"大缓冲区"。它不是为了炫技，而是为了在高负载服务器上，榨干最后一滴 CPU 性能。
