@@ -3,50 +3,130 @@ date: 2026-04-30
 category:
   - 游戏引擎
 tag:
-  - 事件系统
+  - 资源系统
   - 资源管理器
 ---
 
-# 数据池（Data Pool）
+# 数据池（DataPool）
 
-变长块分配器，管理重型资源数据。
+管理连续大块内存的内存分配器。
 
-## 职责
+## 概述
 
-- 管理大块连续内存（64MB 或更大）
-- 提供 Allocate(size) 和 Free(ptr) 接口
-- 不关心存的是什么，也不关心是谁在用它
+- 管理大块连续内存（64MB+）
+- 提供 `Allocate(size, align)` 和 `Free(ptr)` 接口
+- 不关心存储内容类型，不关心调用者身份
 
-## 设计目标
+## 成员变量
 
-解决固定 Slot 的痛点：不再受限于 64B 或 32B。可以切出 1MB 给 Mesh，也可以切出 4MB 给 Texture。
+| 成员 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `m_memoryBase` | `void*` | 物理内存起始地址 |
+| `m_totalSize` | `size_t` | 池总大小（如 256MB/512MB） |
+| `m_strategy` | `AllocatorStrategy` | 分配算法（Bitmap/Linear/Buddy） |
+| `m_poolID` | `uint8_t` | 逻辑 ID，对应 Handle 中 4-bit ID |
+| `m_name` | `std::string` | 调试名称（如 "Texture_Streaming_Pool"） |
 
-## 架构示意
+## 构造参数
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `id` | `uint8_t` | 逻辑 ID，对应 Handle 中的 Allocator ID |
+| `name` | `string` | 调试名称，如 "Static_Geometry" |
+| `size` | `uint64_t` | 预分配总字节数，如 512MB |
+| `strategy` | `enum` | 分配算法：Linear/Block/Page |
+| `flags` | `bitmask` | 属性：HostVisible/DeviceLocal |
+
+---
+
+## 分配策略
+
+### 1. 线性策略 (Linear)
+
+适用于流式资源：地图数据、音频流、视频帧。
 
 ```
-[ CPU Cache Friendly Zone (HandlePool) ]
-+--------+--------+--------+----------+
-| Index  | State  | Type   | DataPtr  |  <-- SoA 数组，紧凑、连续
-+--------+--------+--------+----------+
-|   0    | Ready  | Mesh   | 0x10000  | --\
-|   1    | Load   | Tex    | 0x50000  | --|--> 指向堆/池中的重型数据
-|   2    | Error  | Audio  | nullptr  | --/
-+--------+--------+--------+----------+
-
-[ Large Memory Zone (DataPool) ]
 +-----------------------+
-| [Header: 16B]         |
-| [Mesh Data: 1MB]      | <--- 0x10000
+| [Commit Pointer]      | <-- 当前已提交位置
 +-----------------------+
-| [Free Space...]       |
+| [Data Chunk 1: 4MB]   | <--- 物理地址 A
 +-----------------------+
-| [Header: 16B]         |
-| [Texture Data: 4MB]   | <--- 0x50000
+| [Data Chunk 2: 2MB]   | <--- 物理地址 A+4M
++-----------------------+
+| [Free Space...]       | <-- 剩余可用
 +-----------------------+
 ```
 
+| 特性 | 说明 |
+|:-----|:-----|
+| 分配 | 移动 Commit Pointer，返回旧地址 |
+| 释放 | 不支持单独释放，仅支持回滚到某位置 |
+| 适用 | Frame-based GC（帧级垃圾回收） |
+| 特点 | 无碎片，指针绝对稳定 |
 
+---
 
-## 
-逻辑上：如果 HandlePool 不申请内存，DataPool 就是一块闲置的荒地，永远不会变化。HandlePool 的“申请”动作是因，DataPool 的“变化”是果。
-物理上：DataPool 是一个独立的模块。HandlePool 是另一个独立的模块。它们通过指针（Pointer）这个物理地址连接在一起。
+### 2. 固定块策略 (Block)
+
+适用于离散资源：Mesh、Texture。
+
+| 参数 | 值 |
+|:-----|:---|
+| BlockSize | 64KB 或 1MB |
+| 适用大小 | 64KB ~ 4MB |
+| 生命周期 | 随机 |
+
+```
++-----------------------+
+| [Bitmap Header]       | <-- 位图标记空闲 Slot
++-----------------------+
+| [Slot 0: 1MB]         | <--- 空闲
++-----------------------+
+| [Slot 1: 1MB]         | <--- 存放 Mesh A
++-----------------------+
+| [Slot 2: 1MB]         | <--- 空闲
++-----------------------+
+| [Slot 3: 1MB]         | <--- 存放 Texture B
++-----------------------+
+| ... (Total 512 Slots) |
++-----------------------+
+```
+
+| 特性 | 说明 |
+|:-----|:-----|
+| 分配 | 扫描 Bitmap，找第一个空闲 Slot |
+| 优点 | 无内部碎片，分配速度极快 |
+
+---
+
+### 3. 伙伴系统 (Buddy)
+
+适用于通用堆：脚本内存、物理数据、临时资源。
+
+```
++-----------------------+
+| [Tree Bitmap]         | <-- 管理块分裂状态
++-----------------------+
+| [Block 4MB]           |
+|   |--[Split]          |
+|   |  |--[Block 1MB]   | <--- 存放 Resource X
+|   |  \--[Block 1MB]   | <--- 空闲
+|   \--[Block 2MB]       | <--- 存放 Resource Y
++-----------------------+
+```
+
+| 特性 | 说明 |
+|:-----|:-----|
+| 分配 | 请求大小向上取整到 2 的幂，分裂节点 |
+| 释放 | 合并相邻空闲块，防止碎片 |
+| 特点 | 轻微内部碎片，无外部碎片 |
+
+---
+
+## 与 HandlePool 的关系
+
+| 维度 | 说明 |
+|:-----|:-----|
+| **逻辑关系** | HandlePool 的"申请"是因，DataPool 的"变化"是果 |
+| **物理关系** | 两者独立模块，通过数据指针连接 |
+| **协作流程** | HandlePool 分配 Slot → DataPool 分配内存 → 指针存入 Handle |
