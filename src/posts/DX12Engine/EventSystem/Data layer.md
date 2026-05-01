@@ -23,18 +23,20 @@ tag:
 ```mermaid
 graph LR
     L1["L1 通信层<br/>Message Arena + Bucket"]
-    L2["L2 数据层<br/>EnTT Registry + Systems"]
-    L3["L3 调度层<br/>DAG + TaskFlow"]
+    L2["L2 数据层<br/>EnTT Registry + View/Group"]
+    L3["L3 调度层<br/>DAG + Task Bucket"]
 
     L1 -->|"消息通知"| L2
     L2 -->|"状态查询"| L1
-    L3 -->|"任务调度"| L2
-    L2 -->|"挂起-唤醒"| L3
+    L3 -->|"取出任务执行"| L4
+    L4["L4 应用层<br/>Systems (逻辑)"] -.->|"读写数据"| L2
 ```
 
-数据层承上启下：
-- **对上**：接收调度层的任务，执行 ECS System，返回结果或挂起等待事件
-- **对下**：监听通信层的事件（Dispatcher + Sink），更新实体状态
+> **重要**：L2 数据层**只负责存储数据**，不包含任何逻辑代码。ECS Systems 属于 L4 应用层。
+
+数据层职责：
+- **对上**：被 L4 应用层的 Systems 访问，提供数据查询
+- **对下**：监听 L1 通信层的事件，更新实体状态
 
 ---
 
@@ -157,9 +159,28 @@ if (!rm.IsLoaded(entity.handle)) {
 
 ## 与其他层的关系
 
-### 1. 与 L3 调度层
+### 1. 与 L4 应用层
 
-**调度器向数据层提交任务**：
+> **这是 L2 最重要的关系**
+
+**Systems 访问数据层**：
+
+```cpp
+// L4 应用层：这是你写的逻辑代码
+void MovementSystem::Update(Registry &registry, float dt) {
+    // 从 L2 数据层查询数据
+    auto view = registry.view<Position, Velocity>();
+
+    view.each([dt](Position &pos, const Velocity &vel) {
+        // 纯计算逻辑（L4）
+        pos.x += vel.dx * dt;
+        pos.y += vel.dy * dt;
+    });
+    // 数据写回 L2
+}
+```
+
+> **L2 只提供数据存储和查询接口，L4 负责业务逻辑。**
 
 ```cpp
 // 调度器将 System 包装成 TaskFlow task
@@ -188,7 +209,23 @@ void MovementSystem::update(entt::registry &reg, TaskScheduler &sched, TaskHandl
 
 ---
 
-### 2. 与 L1 通信层
+### 2. 与 L3 调度层
+
+**调度器执行 Systems 时访问数据**：
+
+```cpp
+// L3 调度器
+TaskHandle task = scheduler.add_task([&registry](TaskContext &ctx) {
+    // L4 的逻辑代码在这里执行
+    // 它会访问 registry (L2)
+    auto view = registry.view<Position, Velocity>();
+    view.each([](Position &pos, const Velocity &vel) {
+        pos += vel * deltaTime;
+    });
+});
+```
+
+> **L3 负责调度，L2 负责存储，L4 负责逻辑。**
 
 **监听事件（Sink）**：
 
@@ -253,22 +290,27 @@ recycler.sweep();  // 归还到空闲池
 
 ## 总结
 
-数据层是整个事件系统的"数据心脏"：
+数据层是整个事件系统的"数据仓库"：
 
 1. **EnTT Registry**：唯一真相源，存储所有实体和组件
 2. **View / Group**：高效的查询和遍历接口
 3. **Context + Handle**：优雅的资源管理机制
-4. **与其他层**：通过事件解耦，通过调度器整合
 
-> 数据层的设计决定了游戏引擎的性能上限。
+> **L2 只负责存数据，不包含任何逻辑代码。逻辑代码属于 L4 应用层。**
 
+---
 
+## ⚙️ 执行策略：静态分片（Static Sharding）
 
-⚙️ 执行策略：静态分片（Static Sharding）
-为了解决 Transform 等高频组件的写冲突，L2 不依赖调度器的锁，而是采用数据分片：
-哈希分片：将 Entity ID 按哈希值映射到不同的逻辑桶（Bucket）。
-任务拆解：将 MovementSystem 拆解为多个子任务（Task 0-3），每个任务处理一个桶的数据。
-无锁执行：由于每个子任务处理的数据区互不重叠，因此无需加锁，直接并行执行。
+为了解决 Transform 等高频组件的写冲突，L2 采用数据分片而非锁：
+
+| 步骤 | 操作 | 说明 |
+|:-----|:-----|:-----|
+| 哈希分片 | Entity ID → Bucket | 将实体分配到不同的逻辑桶 |
+| 任务拆解 | System → Task 0-N | 每个任务处理一个桶的数据 |
+| 无锁执行 | 并行处理 | 数据区互不重叠，零锁竞争 |
+
+> **分片是 L2 数据层的优化策略，任务桶是 L3 调度层的管理机制。两者属于不同层级。**
 
 
 

@@ -68,7 +68,29 @@ tag:
 
 ## 核心职责
 
-### 1. 依赖图构建
+### 1. 任务桶 (Task Bucket)
+
+任务桶是调度层内部的任务排队机制，用于存储待执行的任务。
+
+```mermaid
+graph LR
+    subgraph L3_Scheduler["L3 调度层内部"]
+        TB["任务桶 (Task Bucket)<br/>Priority Queue"]
+        DAG["DAG 依赖图"]
+        EXEC["执行器"]
+    end
+
+    subgraph L4_Logic["L4 应用层"]
+        SYS["ECS Systems<br/>你写的逻辑代码"]
+    end
+
+    SYS -->|"包装成 Task"| TB
+    TB -->|"取出执行"| EXEC
+    EXEC -->|"调用"| SYS
+    DAG -.->|"依赖排序"| TB
+```
+
+> **关键点**：任务桶属于 L3 调度层内部机制，不是 L2 数据层的一部分。
 
 ```mermaid
 graph LR
@@ -175,6 +197,22 @@ while (pendingTasks > 0 && processed < TASKS_PER_FRAME) {
 
 | 层级 | 关系 | 交互方式 |
 |:-----|:-----|:---------|
-| L4 应用层 | 任务来源 | 状态机提交任务到调度器 |
-| L2 数据层 | 任务执行 | Systems 被包装成 TaskFlow task |
-| L1 通信层 | 事件唤醒 | 消息桶触发事件，唤醒挂起的协程 |
+| L4 应用层 | **任务来源** | Systems 提交任务到调度器，调度器将任务放入任务桶 |
+| L2 数据层 | **数据来源** | Systems 执行时访问 Registry（存/取 Component） |
+| L1 通信层 | **事件唤醒** | 消息桶触发事件，唤醒挂起的协程 |
+
+### 数据流向图
+
+```mermaid
+sequenceDiagram
+    participant L4 as L4 应用层<br/>(你写的 Systems)
+    participant L3 as L3 调度层<br/>(Task Bucket)
+    participant L2 as L2 数据层<br/>(Registry)
+
+    L4->>L3: 1. 提交任务 (add_task)
+    L3->>L3: 2. 放入任务桶
+    L3->>L4: 3. 取出任务执行
+    L4->>L2: 4. 访问 Registry 存/取数据
+    L2-->>L4: 5. 返回数据
+    L4->>L4: 6. 执行逻辑
+```

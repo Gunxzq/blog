@@ -26,16 +26,19 @@ tag:
 
 ```mermaid
 graph TB
-    subgraph L4["L4 应用层"]
+    subgraph L4["L4 应用层 ★ 逻辑层"]
         SM["状态机<br/>业务逻辑、AI决策"]
+        SYSTEMS["ECS Systems<br/>逻辑代码（你写的）"]
     end
 
     subgraph L3["L3 调度层"]
-        DAG["依赖图<br/>任务排序、死锁检测"]
+        DAG["依赖图 (DAG)<br/>任务排序、死锁检测"]
+        TASK_QUEUE["任务桶 (Task Bucket)<br/>优先级队列、任务排队"]
     end
 
-    subgraph L2["L2 数据层"]
-        TB["任务桶<br/>ECS Systems、批处理"]
+    subgraph L2["L2 数据层 ★ 纯数据"]
+        ECS["Registry<br/>Entity + Component"]
+        VIEWS["View / Group<br/>数据查询接口"]
     end
 
     subgraph L1["L1 通信层"]
@@ -45,8 +48,11 @@ graph TB
     end
 
     SM -->|"状态转移事件"| DAG
-    DAG -->|"任务调度"| TB
-    TB -->|"批处理执行"| MB
+    SYSTEMS -->|"访问"| ECS
+    ECS -->|"数据查询"| SYSTEMS
+    DAG -->|"调度任务"| TASK_QUEUE
+    TASK_QUEUE -->|"取出任务"| SYSTEMS
+    SYSTEMS -->|"发送事件"| MB
     MB -->|"消息入队"| BUCKETS
     MB -->|"写入索引"| ARENA
     ARENA -->|"元数据读取"| BUCKETS
@@ -54,12 +60,14 @@ graph TB
 
 ## 四层架构
 
-| 层级 | 名称 | 核心组件 | 职责 |
-| :--- | :--- | :------- | :--- |
-| L4 | 应用层 | 状态机 | 业务逻辑、AI决策、状态流转 |
-| L3 | 调度层 | 依赖图 | 任务排序、时序保障、死锁检测 |
-| L2 | 数据层 | 任务桶 | 逻辑代码、ECS Systems、批处理 |
-| L1 | 通信层 | 消息桶 | 跨线程通信、事件暂存、异步解耦 |
+| 层级 | 名称 | 核心组件 | 职责 | 代码位置 |
+| :--- | :--- | :------- | :--- | :------- |
+| **L4** | **应用层** | 状态机、ECS Systems | **业务逻辑实现** | `Game/Source` |
+| **L3** | **调度层** | DAG、任务桶 | **流程控制** | `Engine/Core/Schedule` |
+| **L2** | **数据层** | Registry、View、Group | **状态存储** | `Engine/Core/ECS` |
+| **L1** | **通信层** | 消息桶、SoA Arena | **异步解耦** | `Engine/Core/Message` |
+
+> **关键认知**：逻辑代码属于 L4，任务桶属于 L3，L2 只负责"存数据"。
 
 ---
 
@@ -201,18 +209,14 @@ Thread B (UI)   ──→ atomic_fetch_add(ptr, 1) ──→ Arena[101] = dataB
 
 > 详细文档：[数据层](./Data%20layer.md)
 
+**核心职责**：只负责"存数据"，不包含任何逻辑代码。
+
 ### 执行策略
 
-- **批处理**：利用EnTT View一次性遍历所有匹配实体
-- **线程本地存储**：每个工作线程独立桶，避免锁竞争
+- **批处理**：利用 EnTT View 一次性遍历所有匹配实体
+- **分片执行**：根据 Entity ID 哈希分桶，每个桶由不同的任务处理
 
-### 生命周期（墓碑机制）
-
-| 阶段 | 动作 |
-| :--- | :--- |
-| 执行 | 任务完成逻辑 |
-| 标记 | `isFinished = true` |
-| 回收 | 帧末统一清理，归还对象池 |
+> **注意**：任务桶属于 L3 调度层，不属于 L2 数据层。
 
 ---
 
