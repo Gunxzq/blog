@@ -27,47 +27,66 @@ tag:
 ```mermaid
 graph TB
     subgraph L4["L4 应用层 ★ 逻辑层"]
-        SM["状态机<br/>业务逻辑、AI决策"]
-        SYSTEMS["ECS Systems<br/>逻辑代码（你写的）"]
+        SM["状态机<br/>业务逻辑"]
+        SYS["ECS Systems<br/>逻辑代码（你写的）"]
     end
 
     subgraph L3["L3 调度层"]
-        DAG["依赖图 (DAG)<br/>任务排序、死锁检测"]
-        TASK_QUEUE["任务桶 (Task Bucket)<br/>优先级队列、任务排队"]
+        DAG["依赖图 (DAG)<br/>任务排序"]
+        BUCKET["任务桶<br/>优先级队列"]
+        EXEC["执行器<br/>取任务→调用System"]
     end
 
     subgraph L2["L2 数据层 ★ 纯数据"]
-        ECS["Registry<br/>Entity + Component"]
-        VIEWS["View / Group<br/>数据查询接口"]
+        REG["Registry<br/>Entity + Component"]
+        VIEW["View / Group<br/>数据查询"]
     end
 
     subgraph L1["L1 通信层"]
-        MB["消息桶<br/>跨线程通信、事件暂存"]
-        ARENA["全局消息缓冲区<br/>SoA 内存池"]
-        BUCKETS["优先级桶 P0-P4<br/>ConcurrentQueue"]
+        ARENA["消息 Arena<br/>SoA 内存池"]
+        BUCKETS["优先级桶 P0-P4"]
     end
 
-    SM -->|"状态转移事件"| DAG
-    SYSTEMS -->|"访问"| ECS
-    ECS -->|"数据查询"| SYSTEMS
-    DAG -->|"调度任务"| TASK_QUEUE
-    TASK_QUEUE -->|"取出任务"| SYSTEMS
-    SYSTEMS -->|"发送事件"| MB
-    MB -->|"消息入队"| BUCKETS
-    MB -->|"写入索引"| ARENA
-    ARENA -->|"元数据读取"| BUCKETS
+    SM -->|"1. 提交任务"| DAG
+    DAG -->|"2. 入队"| BUCKET
+    SYS -.->|"逻辑代码"| SM
+    BUCKET -->|"3. 取任务"| EXEC
+    EXEC -->|"4. 执行"| SYS
+    SYS -->|"5. 访问数据"| REG
+    REG -.->|"6. 返回数据"| SYS
+    SYS -->|"7. 发送事件"| ARENA
+    ARENA -->|"8. 入桶"| BUCKETS
+```
+
+### 数据流时序
+
+```mermaid
+sequenceDiagram
+    participant L4 as L4: Systems (你写的)
+    participant L3 as L3: Scheduler
+    participant L2 as L2: Registry
+    participant L1 as L1: Arena
+
+    L4->>L3: 1. add_task(LogicFunction)
+    L3->>L3: 2. 放入任务桶
+    L3->>L4: 3. 取出任务执行
+    L4->>L2: 4. View/Query 数据
+    L2-->>L4: 5. 返回数据
+    L4->>L4: 6. 执行逻辑
+    L4->>L2: 7. 写回数据
+    L4->>L1: 8. 发送事件（可选）
 ```
 
 ## 四层架构
 
-| 层级 | 名称 | 核心组件 | 职责 | 代码位置 |
-| :--- | :--- | :------- | :--- | :------- |
-| **L4** | **应用层** | 状态机、ECS Systems | **业务逻辑实现** | `Game/Source` |
-| **L3** | **调度层** | DAG、任务桶 | **流程控制** | `Engine/Core/Schedule` |
-| **L2** | **数据层** | Registry、View、Group | **状态存储** | `Engine/Core/ECS` |
-| **L1** | **通信层** | 消息桶、SoA Arena | **异步解耦** | `Engine/Core/Message` |
+| 层级 | 名称 | 隐喻 | 核心组件 | 职责 | 代码位置 |
+| :--- | :--- | :--- | :------- | :--- | :------- |
+| **L4** | **应用层** | 🎬 编剧 | 状态机、ECS Systems | **写逻辑** | `Game/Source` |
+| **L3** | **调度层** | 🎭 导演 | DAG、任务桶、执行器 | **排序+执行** | `Engine/Core/Schedule` |
+| **L2** | **数据层** | 📖 剧本 | Registry、View、Group | **存数据** | `Engine/Core/ECS` |
+| **L1** | **通信层** | 📞 对讲机 | 消息桶、SoA Arena | **跨线程通知** | `Engine/Core/Message` |
 
-> **关键认知**：逻辑代码属于 L4，任务桶属于 L3，L2 只负责"存数据"。
+> **数据流**：编剧(L4)写剧本 → 导演(L3)安排顺序 → 演员读剧本(L2)表演 → 用对讲机(L1)通知结果
 
 ---
 
