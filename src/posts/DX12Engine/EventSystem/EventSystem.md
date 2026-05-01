@@ -7,10 +7,20 @@ tag:
   - 事件系统
 ---
 
-
 # 事件系统（Event System）
 
-核心原则：**分层隔离**。系统分为四层，每层只与相邻层交互。
+核心原则：**分层隔离**。系统分为四层，每层只与相邻层交互。安全原则：**数学证明级**。通过五层安全机制避免并发陷阱。
+
+## 子文档导航
+
+| 层级 | 文档 | 核心内容 |
+|:-----|:-----|:---------|
+| L3 调度层 | [调度层](./Schedule%20layer.md) | DAG 依赖图、任务调度、协程挂起-唤醒 |
+| L2 数据层 | [数据层](./Data%20layer.md) | EnTT Registry、View/Group、资源句柄 |
+| L1 通信层 | [通信层](./Communication%20layer.md) | 消息桶、优先级调度、SoA 内存池 |
+| L1 通信层 | [全局消息缓冲区](./MessageArena.md) | Arena 组件关系、NUMA 无锁写入、缓存友好设计 |
+
+---
 
 ## 架构总览
 
@@ -53,7 +63,119 @@ graph TB
 
 ---
 
+## 核心安全守则
+
+> **架构宪法：** 本事件系统通过五层安全机制，实现"数学证明级"的内存安全。
+
+| # | 安全类型 | 痛点 | 防御机制 | 实证 |
+|:--:|:---------|:-----|:---------|:-----|
+| 1 | 内存安全 | 指针悬挂、野指针 | Generation 版本号 | `registry.valid(entity)` 数学证明安全 |
+| 2 | 渲染安全 | 画面撕裂、读写冲突 | 双缓冲（Front/Back） | 状态机写 Back，渲染线程读 Front |
+| 3 | 执行安全 | 死锁、竞态条件 | 静态分片（Static Sharding） | Entity ID 哈希分片，物理隔离 |
+| 4 | 资源安全 | 空指针崩溃 | Handle + 挂起-唤醒 | System 发现未就绪自动挂起 |
+| 5 | 通信安全 | 伪共享、锁竞争 | SoA + 无锁队列 | 原子索引分配，空间换安全 |
+
+### 1. 内存安全（Generation 版本号）
+
+**痛点：** 指针悬挂、野指针访问。
+
+**防御：** EnTT 的 Entity ID = Index + Generation。
+
+```cpp
+struct EntityID {
+    uint32_t index;      // 槽位索引
+    uint32_t generation; // 代数版本
+};
+
+// 数学证明的安全检查
+bool valid(const EntityID &id) {
+    return registry.valid(id.index)
+        && registry.entity(id.index) == id.generation;
+}
+```
+
+> **实证：** 只要开发者用 `registry.valid(entity)` 检查，就不可能访问到已经被回收并重新分配的内存。这是数学证明的安全，不是概率问题。
+
+### 2. 渲染安全（Double Buffering）
+
+**痛点：** 画面撕裂、渲染线程读取到一半被修改的数据。
+
+**防御：** L4 状态机只写 Back Buffer，渲染线程只读 Front Buffer。
+
+```cpp
+// 一级数据 -> 双缓冲
+struct RenderTransform {
+    alignas(64) glm::mat4 world;  // 64字节对齐防止伪共享
+};
+
+// 帧末交换
+std::swap(frontBuffer, backBuffer);
+```
+
+> **实证：** 文档中的"渲染管线数据分级"策略。只要 Transform 被标记为一级数据，引擎强制执行 `swap(front, back)`。开发者无法"写烂"这个逻辑，因为逻辑在引擎层（L2）。
+
+### 3. 执行安全（Static Sharding）
+
+**痛点：** 死锁、竞态条件。
+
+**防御：** 静态分片替代动态锁。
+
+| 策略 | 错误做法 | 正确做法 |
+|:-----|:---------|:---------|
+| 冲突处理 | Task A 和 Task B 抢同一资源 → 加锁 → 性能下降 | 根据 Entity ID 哈希分片 → 生成 Task A-0, A-1, B-0, B-1 → **零锁竞争** |
+| 图构建时机 | 运行时动态拼接 | 初始化阶段完成拓扑排序 |
+
+> **实证：** 将 Entity 按 ID 哈希分片。如果状态机 A 处理 Bucket 0，状态机 B 处理 Bucket 1，它们物理上就不可能发生数据冲突。这是空间换安全。
+
+### 4. 资源安全（Handle 挂起-唤醒）
+
+**痛点：** 资源加载未完成就使用，导致空指针崩溃。
+
+**防御：** System 发现资源未就绪，引擎自动挂起协程。
+
+```cpp
+TaskHandle loadTask = scheduler.add_task([&](TaskContext &ctx) {
+    auto handle = resourceManager->Load("player.fbx");
+
+    if (!handle.IsReady()) {
+        // 挂起，等待 ResourceLoaded 事件唤醒
+        ctx.suspend(handle, ResourceLoadedEvent::type);
+        return;
+    }
+
+    // 资源就绪，继续执行（永远不会访问到空指针）
+    mesh = handle.Get();
+});
+```
+
+> **实证：** System 发现资源未就绪，引擎自动挂起协程，不执行逻辑。开发者想"写烂"都难，因为代码根本跑不到那一步。
+
+### 5. 通信安全（SoA + 无锁队列）
+
+**痛点：** 伪共享（False Sharing）、锁竞争。
+
+**防御：** Arena SoA 布局 + 原子索引分配。
+
+```cpp
+// 物理线程和 UI 线程写入不同的内存流
+Thread A (物理) ──→ atomic_fetch_add(ptr, 1) ──→ Arena[100] = dataA
+Thread B (UI)   ──→ atomic_fetch_add(ptr, 1) ──→ Arena[101] = dataB
+                                      ↑ 索引互不重叠，写入无锁
+```
+
+| 技术 | 作用 |
+|:-----|:-----|
+| SoA 布局 | Type/Sender/Ptr 分开存储，CPU 缓存一次性读入所有类型 ID |
+| 原子索引 | 把"写内存竞争"转化为"分配下标竞争" |
+| 无锁入桶 | ConcurrentQueue 只存数字下标，不存完整消息体 |
+
+> **实证：** 物理线程和 UI 线程写入不同的内存流（Stream），通过原子索引分配。这是硬件级的防御。
+
+---
+
 ## L1 通信层
+
+> 详细文档：[通信层](./Communication%20layer.md) | [全局消息缓冲区](./MessageArena.md)
 
 ### 优先级桶
 
@@ -75,7 +197,9 @@ graph TB
 
 ---
 
-## L2 任务桶
+## L2 数据层
+
+> 详细文档：[数据层](./Data%20layer.md)
 
 ### 执行策略
 
@@ -92,13 +216,27 @@ graph TB
 
 ---
 
-## L3 依赖图
+## L3 调度层
+
+> 详细文档：[调度层](./Schedule%20layer.md)
 
 ### DAG与协程
 
 - **节点**：任务（如`ApplyDamage`）
 - **边**：依赖（必须在某任务之前执行）
 - **协程**：等待资源加载时挂起，事件到达后唤醒
+
+### DAG与协程
+
+- **节点**：任务（如`ApplyDamage`）
+- **边**：依赖（必须在某任务之前执行）
+- **协程**：等待资源加载时挂起，事件到达后唤醒
+
+
+调度器（L3）严禁处理高频的、细粒度的资源竞争事件（如 Transform_Lock）。
+准入标准：只有跨帧或异步的事件（如 IO、网络）才能触发调度器的“挂起-唤醒”机制。
+拒绝标准：帧内的逻辑冲突必须在 L2 内部消化。
+
 
 ---
 

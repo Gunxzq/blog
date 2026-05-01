@@ -1,5 +1,6 @@
 ---
 date: 2026-04-28
+order: 5
 category:
   - 游戏引擎
 tag:
@@ -8,6 +9,8 @@ tag:
 ---
 
 # 全局消息缓冲区 (Global Message Arena)
+
+> 导航：[返回总览](../EventSystem.md) | [通信层](./Communication%20layer.md)
 
 一块预分配的、巨大的连续内存池。它不存储具体的游戏逻辑（那是 ENTT 的事），它只存储 **"正在飞行中的消息"** 。
 

@@ -1,5 +1,6 @@
 ---
 date: 2026-04-27
+order: 4
 category:
   - 游戏引擎
 tag:
@@ -10,6 +11,10 @@ tag:
 # 通信层（Communication Layer）
 
 > 通信层是事件系统的底层部分，消息桶集合组成了通信层。
+>
+> 导航：[返回总览](../EventSystem.md) | [全局消息缓冲区](./MessageArena.md)
+
+---
 
 ---
 
