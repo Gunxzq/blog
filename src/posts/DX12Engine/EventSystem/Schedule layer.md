@@ -117,24 +117,54 @@ class TaskScheduler {
 };
 ```
 
-### 3. 协程支持
+### 3. 任务流执行
 
-当任务需要等待资源加载时，挂起协程并注册事件回调：
+使用 TaskFlow 构建 DAG（有向无环图），实现任务的自动依赖排序与并行执行：
 
 ```cpp
+// 创建任务流
+tf::Taskflow taskflow;
+
+// 定义任务节点
+tf::Task init = taskflow.emplace([]() { /* 初始化 */ });
+tf::Task update = taskflow.emplace([]() { /* 更新 */ });
+tf::Task render = taskflow.emplace([]() { /* 渲染 */ });
+
+// 添加依赖边（DAG）
+init.precede(update);
+update.precede(render);
+
+// 提交执行
+tf::Executor executor;
+executor.run(taskflow).wait();
+```
+
+关键特性：
+- **拓扑排序**：调度器自动分析依赖关系，确定最优执行顺序
+- **工作窃取**：多线程执行时自动负载均衡
+- **死锁检测**：初始化时验证 DAG 无环形依赖
+
+### 4. 挂起与唤醒机制
+
+当任务需要等待外部条件（如资源加载完成）时，支持挂起-唤醒模式：
+
+```cpp
+// 任务执行过程中检查条件
 TaskHandle loadTask = scheduler.add_task([&](TaskContext &ctx) {
     auto handle = resourceManager->Load("player.fbx");
 
     if (!handle.IsReady()) {
-        // 挂起，等待 ResourceLoaded 事件唤醒
+        // 条件未满足，挂起任务并注册事件回调
         ctx.suspend(handle, ResourceLoadedEvent::type);
         return;
     }
 
-    // 资源就绪，继续执行
+    // 条件满足，继续执行
     mesh = handle.Get();
 });
 ```
+
+当 ResourceLoadedEvent 事件被触发时，调度器自动唤醒对应任务继续执行。
 
 ---
 

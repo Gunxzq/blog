@@ -25,9 +25,9 @@ graph TB
     end
 
     subgraph Arena
-        TYPE["Type Stream<br/>uint16_t[]"]
+        TYPE["Type Stream<br/>uint32_t[]"]
         SENDER["Sender Stream<br/>uint32_t[]"]
-        PAYLOAD["Payload Stream<br/>void*[]"]
+        PAYLOAD["Payload Stream<br/>uint64_t[]"]
         TIME["Time Stream<br/>uint64_t[]"]
     end
 
@@ -68,9 +68,9 @@ Message buffer[10000];
 
 | 数组流 (Stream) | 存储内容 | 访问者 |
 | :--- | :--- | :--- |
-| **Type Stream** | 消息类型 ID (uint16_t) | 调度器 (高频读取) |
+| **Type Stream** | 消息类型 ID (uint32_t) | 调度器 (高频读取) |
 | **Sender Stream** | 发送者 ID (uint32_t) | 调度器 (过滤) |
-| **Payload Stream** | 指向资源管理器中的资源句柄  (void*) | 消费者 (处理逻辑) |
+| **Payload Stream** | 高位存值类型，低位存资源句柄 (uint64_t) | 消费者 (处理逻辑) |
 | **Time Stream** | 时间戳 (uint64_t) | 桶管理器 (计算 Aging) |
 
 - **对齐策略**：每个 Stream 内部按 **64 Bytes (Cache Line)** 对齐，防止不同 Stream 之间的伪共享。

@@ -500,3 +500,79 @@ EnTT只存`MeshID`，渲染线程按ID查询真正指针。
 3. **安全性**：版本号防野指针，数据分级防带宽浪费
 
 让事件告诉渲染器该怎么做，而不是让渲染器去猜。
+
+
+
+
+
+## xxx
+
+---
+
+## ⚙️ 执行策略：静态分片（Static Sharding）
+
+为了解决 Transform 等高频组件的写冲突，L2 采用数据分片而非锁：
+
+| 步骤 | 操作 | 说明 |
+|:-----|:-----|:-----|
+| 哈希分片 | Entity ID → Bucket | 将实体分配到不同的逻辑桶 |
+| 任务拆解 | System → Task 0-N | 每个任务处理一个桶的数据 |
+| 无锁执行 | 并行处理 | 数据区互不重叠，零锁竞争 |
+
+> **分片是 L2 数据层的优化策略，任务桶是 L3 调度层的管理机制。两者属于不同层级。**
+
+
+
+## 实施要点
+
+### 内存布局策略
+
+| 组件类型 | 布局 | 原因 |
+|:--------|:-----|:-----|
+| Transform | SoA + 双缓冲 | 渲染每帧读取，高频写入 |
+| Health | AoS 普通 | 仅逻辑系统访问，渲染不关心 |
+| AIState | AoS 普通 | 低频访问 |
+
+### 版本号防幽灵引用
+
+```cpp
+struct Handle {
+    uint32_t index;      // 实体索引
+    uint32_t generation;  // 代数版本
+};
+
+bool valid(const Handle &h) {
+    return registry.valid(h.index) 
+        && registry.entity(h.index) == h.generation;
+}
+```
+
+### 墓碑机制（延迟回收）
+
+```cpp
+// 实体销毁时只标记
+registry.destroy(entity);  // 变为 tombstone
+
+// 本帧渲染仍能访问
+if (registry.valid(entity)) { /* 渲染 */ }
+
+// 下帧确认回收
+recycler.sweep();  // 归还到空闲池
+```
+
+---
+
+
+
+
+## 数据分级与缓存优化
+
+数据按访问模式分为三级，不同级别采用不同的存储策略：
+
+|| 等级 | 特征 | 示例 | 策略 |
+|:---:|:----:|:-----|:-----|:-----|
+| 🔴 | **一级** | 高频变动 + 渲染强依赖 | Transform、AnimationState | 双缓冲（Front/Back） |
+| 🟡 | **二级** | 低频变动 + 渲染依赖 | MeshHandle、TextureHandle | 写时复制/脏标记 |
+| 🟢 | **三级** | 纯逻辑数据 | Health、AIState | 普通存储 |
+
+---
