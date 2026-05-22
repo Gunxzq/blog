@@ -9,349 +9,423 @@ tag:
 
 # Bootstrap (引导启动模块)
 
-## 1. 概述
+## 1. 定位与职责
 
-Bootstrap 是游戏引擎的**装配层**，负责初始化基础设施、创建 Context 并填充能力、最终创建 Game 实例。
+### 定位
 
-| 职责定位 | 说明 |
-|:--------|:-----|
-| **做什么** | 初始化基础设施、创建 Context、组装依赖、将 GameContext 注入 Game |
-| **不做什么** | 不持有消息循环、不管理运行时生命周期、不进入主循环 |
+Bootstrap 是游戏引擎的**装配层（Assembly Layer）**，负责初始化 GameContext 所需的所有基础设施模块，并将它们组装到 Context 中。
 
-**设计哲学**：Bootstrap 是"工厂 + 装配工"，负责将散落的子系统组装成 Context，然后创建 Game 并注入 Context，最后移交控制权。
+- **上游依赖**：无（Bootstrap 是引擎的启动入口）
+- **下游服务**：
+  - 创建并填充 `GameContext`
+  - 为 `Game` 提供完整的运行上下文
 
----
+### 核心职责
 
-## 2. 核心职责
+| 职责 | 说明 |
+|:----|:-----|
+| **模块初始化** | 按正确顺序初始化 ConfigManager、Logger、Window、D3D12DeviceContext 等 |
+| **Context 装配** | 创建 GameContext 并将所有子系统指针填充进去 |
+| **异常处理** | 捕获初始化异常，清理已分配资源，提供友好错误信息 |
+| **生命周期管理** | 使用 `std::unique_ptr` 管理子系统对象的所有权 |
 
-### 2.1 初始化基础设施
+### 职责边界
 
-| 顺序 | 子系统 | 说明 |
-|:----:|:-------|:-----|
-| 1 | ConfigManager | 读取配置文件，解析参数 |
-| 2 | Logging | 根据配置初始化日志输出 |
-| 3 | Window | 创建操作系统窗口 |
-| 4 | D3D12 Device Context | 初始化 DirectX 12 设备和交换链 |
-
-### 2.2 创建并填充 Context
-
-Bootstrap 创建 GameContext 并填充具体能力：
-
-```cpp
-GameContext* Bootstrap::CreateContext() {
-    auto ctx = new GameContext();
-
-    // 基础子系统
-    ctx->Config   = new JsonConfigManager("config.json");
-    ctx->Logging  = new FileLogging(ctx->Config);
-    ctx->Window   = new DX12Window(ctx->Config);
-
-    // 渲染和其他子系统
-    ctx->Renderer = new DX12Renderer(ctx->Window);
-
-    return ctx;
-}
-```
-
-### 2.3 异常捕获
-
-- InitializeModules 内部使用 try-catch 块包裹初始化流程。
-- 处理启动阶段的致命错误（如窗口创建失败、D3D12 初始化失败）。
-- 提供友好的错误信息（通过 Logger 或 EarlyLog 兜底）。
-- 失败时自动调用 Shutdown() 清理已初始化的资源
-
-### 2.4 创建 Game 并移交控制权
-
-```cpp
-// Bootstrap 的职责到此为止
-Bootstrap bootstrap;
-bootstrap.Run(); // 初始化基础设施
-
-GameContext* ctx = bootstrap.CreateContext();  // 创建并填充 Context
-Game game(ctx);                                // 将 Context 注入 Game
-return game.Run();                             // 移交控制权给 Game
-```
-
----
-
-## 3. 架构图表
-
-### 3.1 模块职责边界（包含 Context）
-
-```mermaid
-graph TB
-    subgraph "操作系统层"
-        A["main() / wWinMain()"]
-    end
-
-    subgraph "Bootstrap (装配层)"
-        B["Run() / InitializeModules()"]
-        C["CreateContext()"]
-        D["填充能力到 Context"]
-    end
-
-    subgraph "Context (中间层)"
-        E["GameContext"]
-        E1["ConfigManager*"]
-        E2["Logger*"]
-        E3["Window*"]
-        E4["GameTimer*"]
-        E5["D3D12DeviceContext*"]
-    end
-
-    subgraph "Game (运行层)"
-        G["Run()"]
-        H["Shutdown()"]
-        I["Update()"]
-        J["Render()"]
-    end
-
-    A -->|"调用"| B
-    B --> C
-    C --> D
-    D -->|"填充"| E1
-    D -->|"填充"| E2
-    D -->|"填充"| E3
-    D -->|"填充"| E4
-    D -->|"填充"| E5
-
-    C -->|"返回"| E
-    E -->|"注入"| G
-    B -->|"移交控制"| G
-
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style B fill:#e8f5e9,stroke:#2e7d32
-    style E fill:#fff3e0,stroke:#e65100
-    style G fill:#e3f2fd,stroke:#1565c0
-```
-
-### 3.2 启动时序图
-
-```mermaid
-sequenceDiagram
-    participant main as main() / wWinMain()
-    participant Bootstrap
-    participant Context as GameContext
-    participant Game
-
-    main->>Bootstrap: new Bootstrap()
-    main->>Bootstrap: Run()
-    Activate Bootstrap
-
-    Bootstrap->>Bootstrap: InitializeConfigManager()
-    Bootstrap->>Bootstrap: InitializeLogging()
-    Bootstrap->>Bootstrap: CreateMainWindow()
-    Bootstrap->>Bootstrap: InitializeD3DDeviceContext()
-    
-    Note over Bootstrap: 基础设施初始化完成
-
-    main->>Bootstrap: CreateContext()
-    Bootstrap->>Context: new GameContext()
-    Bootstrap->>Context: Context->Config = &ConfigManager::GetInstance()
-    Bootstrap->>Context: Context->Logging = Logger::GetInstance()
-    Bootstrap->>Context: Context->Window = m_window.get()
-    Bootstrap->>Context: Context->MainTimer = m_mainTimer.get()
-    Bootstrap->>Context: Context->DeviceContext = m_deviceContext.get()
-    
-    Context-->>main: GameContext*
-    Deactivate Bootstrap
-
-    main->>Game: new Game(Context)
-    main->>Game: Run()
-    Activate Game
-
-    loop Game Loop
-        Game->>Context: Context->Window->ProcessMessages()
-        Game->>Game: Update()
-        Game->>Game: Render()
-    end
-
-    Game-->>main: exitCode
-    Deactivate Game
-```
-
-### 3.3 依赖层级
-
-```mermaid
-graph TB
-    subgraph "Bootstrap (装配层)"
-        B["Bootstrap"]
-    end
-
-    subgraph "Context (中间层)"
-        C["GameContext"]
-        C1["ConfigManager*"]
-        C2["Logger*"]
-        C3["Window*"]
-        C4["GameTimer*"]
-        C5["D3D12DeviceContext*"]
-    end
-
-    subgraph "具体实现"
-        CM["ConfigManager (Singleton)"]
-        Log["Logger (Singleton)"]
-        Win["Window"]
-        Timer["GameTimer"]
-        Dev["D3D12DeviceContext"]
-    end
-
-    subgraph "Game (运行层)"
-        G["Game"]
-    end
-
-    B -->|"创建/获取"| CM
-    B -->|"创建/获取"| Log
-    B -->|"创建"| Win
-    B -->|"创建"| Timer
-    B -->|"创建"| Dev
-
-    CM -->|"填充"| C1
-    Log -->|"填充"| C2
-    Win -->|"填充"| C3
-    Timer -->|"填充"| C4
-    Dev -->|"填充"| C5
-
-    C -->|"注入"| G
-
-    style B fill:#e8f5e9,stroke:#2e7d32
-    style C fill:#fff3e0,stroke:#e65100
-    style G fill:#e3f2fd,stroke:#1565c0
-```
-
-### 3.4 能力注入模式（通过 Context）
-
-```mermaid
-graph LR
-    subgraph "Bootstrap 创建"
-        B["Bootstrap"]
-        W["Window"]
-        D["D3D12DeviceContext"]
-        T["GameTimer"]
-    end
-
-    subgraph "Context 持有指针"
-        C["GameContext"]
-        C1["Window*"]
-        C2["D3D12DeviceContext*"]
-        C3["GameTimer*"]
-        C4["ConfigManager*"]
-        C5["Logger*"]
-    end
-
-    subgraph "Game 使用"
-        G["Game"]
-        GL["GameLoop"]
-    end
-
-    B -->|"new/get"| W
-    B -->|"new"| D
-    B -->|"new"| T
-
-    W -->|"填充"| C1
-    D -->|"填充"| C2
-    T -->|"填充"| C3
-    
-    B -->|"get Instance"| C4
-    B -->|"get Instance"| C5
-
-    C -->|"注入"| G
-    C1 & C2 & C3 & C4 & C5 -->|"使用"| GL
-
-    style B fill:#e8f5e9,stroke:#2e7d32
-    style C fill:#fff3e0,stroke:#e65100
-    style G fill:#e3f2fd,stroke:#1565c0
-```
-
-```cpp
-// 1. Context 持有具体子系统的指针/引用
-class GameContext {
-public:
-    ConfigManager*          Config          = nullptr;
-    Logger*                 Logging         = nullptr;
-    Window*                 Window          = nullptr;
-    GameTimer*              MainTimer       = nullptr;
-    D3D12DeviceContext*     DeviceContext   = nullptr;
-};
-
-// 2. Game 只依赖 Context
-class Game {
-private:
-    GameContext* m_Context;  // 单一的注入点
-
-public:
-    Game(GameContext* ctx) : m_Context(ctx) {}
-    void Render() { 
-        // 通过 Context 访问渲染设备
-        auto* device = m_Context->DeviceContext;
-        // ...
-    }
-};
-
-// 3. Bootstrap 负责制造具体能力并填充 Context
-class Bootstrap {
-public:
-    void Run() {
-        InitializeModules(); // Config, Logging, Window, D3D12
-    }
-
-    GameContext* CreateContext() {
-        m_context = std::make_unique<GameContext>();
-        m_context->Config       = &ConfigManager::GetInstance();
-        m_context->Logging      = Logger::GetInstance();
-        m_context->Window       = m_window.get();
-        m_context->MainTimer    = m_mainTimer.get();
-        m_context->DeviceContext = m_deviceContext.get();
-        return m_context.get();
-    }
-};
-```
-
-
-## 4. 职责边界总结
-
-| 组件 | Bootstrap | Context | Game | wWinMain |
-|:-----|:---------:|:-------:|:----:|:--------:|
+| 组件 | Bootstrap | GameContext | Game | main/wWinMain |
+|:----|:---------:|:-----------:|:----:|:-------------:|
 | 创建 ConfigManager | ✅ | ❌ | ❌ | ❌ |
-| 创建 Logging | ✅ | ❌ | ❌ | ❌ |
+| 创建 Logger | ✅ | ❌ | ❌ | ❌ |
 | 创建 Window | ✅ | ❌ | ❌ | ❌ |
-| 创建 D3D12 Device	 | ✅ | ❌ | ❌ | ❌ |
+| 创建 D3D12DeviceContext | ✅ | ❌ | ❌ | ❌ |
 | 创建 GameTimer | ✅ | ❌ | ❌ | ❌ |
 | 创建 GameContext | ✅ | ❌ | ❌ | ❌ |
 | 填充 Context 能力 | ✅ | ❌ | ❌ | ❌ |
-| 持有能力指针 | ❌ (持有 unique_ptr) | ✅(持有裸指针)	 | ❌ | ❌ |
-| 创建 Game 实例 | ❌ (由外部调用) | ❌ | ❌ | ✅ |
-| 持有消息循环 | ❌ | ❌ | ✅ | ❌ |
-| 管理生命周期 | ❌ | ❌ | ✅ | ❌ |
+| 持有子系统所有权 (unique_ptr) | ✅ | ❌ | ❌ | ❌ |
+| 持有能力引用 (裸指针) | ❌ | ✅ | ❌ | ❌ |
+| 创建 Game 实例 | ❌ | ❌ | ❌ | ✅ |
+| 持有主循环 | ❌ | ❌ | ✅ | ❌ |
 | 调用 Game.Run() | ❌ | ❌ | ❌ | ✅ |
 
-注意：Bootstrap 内部通过 std::unique_ptr 管理子系统的生命周期，而 GameContext 中存储的是裸指针（非拥有权），确保生命周期由 Bootstrap 控制，避免双重释放。
+---
 
+## 2. 架构图表
+
+### 2.1 模块依赖关系图
+
+```mermaid
+graph TD
+    subgraph "Bootstrap 模块"
+        B[Bootstrap]
+    end
+
+    subgraph "基础设施（Bootstrap 创建并拥有）"
+        CM[ConfigManager<br/>Singleton]
+        LOG[Logger<br/>Singleton]
+        WIN[Window<br/>unique_ptr]
+        D3D[D3D12DeviceContext<br/>unique_ptr]
+        TIMER[GameTimer<br/>unique_ptr]
+        REG[ECS::Registry<br/>unique_ptr]
+        DISP[MessageDispatcher<br/>Singleton]
+        INPUT[InputSystem<br/>Singleton]
+        DEBUG[DebugUIManager<br/>Singleton]
+        GNS[GameNetworkingSockets]
+    end
+
+    subgraph "Context（Bootstrap 填充）"
+        CTX[GameContext]
+    end
+
+    subgraph "Game（外部使用）"
+        GAME[Game]
+    end
+
+    B -->|Initialize| CM
+    B -->|Initialize| LOG
+    B -->|Create| WIN
+    B -->|Create| D3D
+    B -->|Create| TIMER
+    B -->|Create| REG
+    B -->|Init| DISP
+    B -->|Init| INPUT
+    B -->|Init| DEBUG
+    B -->|Init| GNS
+
+    B -->|填充指针| CTX
+    CTX -->|注入| GAME
+
+    WIN -->|提供 HWND| D3D
+    WIN -->|提供 HWND| DEBUG
+
+    style B fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style CTX fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style GAME fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+```
+
+### 2.2 初始化时序图
+
+```mermaid
+sequenceDiagram
+    participant Main as main() / wWinMain()
+    participant BS as Bootstrap
+    participant CM as ConfigManager
+    participant LOG as Logger
+    participant WIN as Window
+    participant D3D as D3D12DeviceContext
+    participant DISP as MessageDispatcher
+    participant INPUT as InputSystem
+    participant REG as ECS::Registry
+    participant DRV as FrameDriver
+    participant CTX as GameContext
+
+    Main->>BS: new Bootstrap()
+    Main->>BS: Run()
+
+    activate BS
+    
+    BS->>CM: Initialize("Config")
+    CM-->>BS: OK
+    
+    BS->>LOG: Init(LogConfig)
+    LOG-->>BS: OK
+    
+    BS->>WIN: Create()
+    WIN-->>BS: HWND
+    
+    BS->>D3D: Initialize(HWND, config)
+    D3D-->>BS: OK
+    
+    BS->>DISP: Init()
+    DISP-->>BS: OK
+    
+    BS->>INPUT: Initialize()
+    INPUT-->>BS: OK
+    
+    BS->>REG: new Registry()
+    REG-->>BS: OK
+    
+    BS->>DRV: InitializeSchedulerContext()
+    DRV-->>BS: OK
+    
+    deactivate BS
+
+    Main->>BS: CreateContext()
+    activate BS
+    
+    BS->>CTX: new GameContext()
+    BS->>CTX: Config = &CM
+    BS->>CTX: Logging = &LOG
+    BS->>CTX: Window = WIN.get()
+    BS->>CTX: DeviceContext = D3D.get()
+    BS->>CTX: Registry = REG.get()
+    BS->>CTX: FrameDriver = DRV
+    BS->>CTX: Dispatcher = DISP.GetInstance()
+    BS->>CTX: InputSys = &INPUT
+    
+    CTX-->>Main: GameContext*
+    deactivate BS
+
+    Main->>GAME: new Game(CTX)
+    Main->>GAME: Run()
+```
+
+### 2.3 所有权与指针流向图
+
+```mermaid
+graph LR
+    subgraph "Bootstrap (拥有者)"
+        BS[Bootstrap]
+        WIN[Window<br/>unique_ptr]
+        D3D[D3D12DeviceContext<br/>unique_ptr]
+        TIMER[GameTimer<br/>unique_ptr]
+        REG[ECS::Registry<br/>unique_ptr]
+    end
+
+    subgraph "Singleton (全局拥有者)"
+        CM[ConfigManager]
+        LOG[Logger]
+        DISP[MessageDispatcher]
+        INPUT[InputSystem]
+    end
+
+    subgraph "GameContext (引用者)"
+        CTX[GameContext]
+        CTX_W[Window*]
+        CTX_D[D3D12DeviceContext*]
+        CTX_T[GameTimer*]
+        CTX_R[ECS::Registry*]
+        CTX_C[ConfigManager*]
+        CTX_L[Logger*]
+        CTX_DP[MessageDispatcher*]
+        CTX_I[InputSystem*]
+    end
+
+    subgraph "Game (使用者)"
+        GAME[Game]
+    end
+
+    BS -->|拥有| WIN
+    BS -->|拥有| D3D
+    BS -->|拥有| TIMER
+    BS -->|拥有| REG
+
+    WIN -.->|裸指针| CTX_W
+    D3D -.->|裸指针| CTX_D
+    TIMER -.->|裸指针| CTX_T
+    REG -.->|裸指针| CTX_R
+    
+    CM -.->|全局访问| CTX_C
+    LOG -.->|全局访问| CTX_L
+    DISP -.->|全局访问| CTX_DP
+    INPUT -.->|全局访问| CTX_I
+
+    CTX -->|注入| GAME
+
+    style BS fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style CTX fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style GAME fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style WIN fill:#c8e6c9
+    style D3D fill:#c8e6c9
+    style TIMER fill:#c8e6c9
+    style REG fill:#c8e6c9
+```
+
+### 2.4 GameContext 能力注入示意图
+
+```mermaid
+graph TB
+    subgraph "Bootstrap 初始化并填充"
+        direction LR
+        B1[CreateMainWindow]
+        B2[InitializeD3DDeviceContext]
+        B3[Create GameTimer]
+        B4[Initialize ECS Registry]
+        B5[Initialize FrameDriver]
+    end
+
+    subgraph "GameContext 结构"
+        direction TB
+        CTX[GameContext]
+        C1[Window*]
+        C2[D3D12DeviceContext*]
+        C3[GameTimer*]
+        C4[ECS::Registry*]
+        C5[FrameDriver*]
+        C6[ConfigManager*]
+        C7[Logger*]
+        C8[MessageDispatcher*]
+        C9[InputSystem*]
+        C10[CameraManager*]
+    end
+
+    B1 -->|填充| C1
+    B2 -->|填充| C2
+    B3 -->|填充| C3
+    B4 -->|填充| C4
+    B5 -->|填充| C5
+    
+    CM[ConfigManager::GetInstance] -->|填充| C6
+    LOG[Logger::GetInstance] -->|填充| C7
+    DISP[MessageDispatcher::GetInstance] -->|填充| C8
+    INPUT[InputSystem::Get] -->|填充| C9
+    CAM[CameraManager::GetInstance] -->|填充| C10
+
+    CTX --> GAME[Game 使用]
+
+    style CTX fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style GAME fill:#e3f2fd,stroke:#1565c0
+```
+
+---
+
+## 3. 核心功能模块
+
+### 3.1 模块初始化顺序
+
+```cpp
+void Bootstrap::InitializeModules() {
+    // 1. 配置管理器（基础）
+    InitializeConfigManager("Config");
+    
+    // 2. 日志系统（依赖配置）
+    InitializeLogging();
+    
+    // 3. 窗口（依赖配置）
+    CreateMainWindow();
+    
+    // 4. D3D12 设备上下文（依赖窗口句柄）
+    InitializeD3DDeviceContext();
+    
+    // 5. DebugUI（依赖窗口和设备）
+    InitializeDebugUI();
+    
+    // 6. 消息分发器
+    MessageDispatcher::Init();
+    
+    // 7. 输入系统
+    InputSystem::Get().Initialize(inputConfigPath);
+    
+    // 8. ECS Registry
+    InitializeRegistry();
+    
+    // 9. FrameDriver（调度层核心）
+    InitializeFrameDriver();
+    
+    // 10. GameNetworkingSockets
+    GameNetworkingSockets_Init();
+}
+```
+
+### 3.2 Context 填充
+
+```cpp
+GameContext* Bootstrap::CreateContext() {
+    m_context = std::make_unique<GameContext>();
+    
+    // 填充所有子系统指针
+    m_context->Config        = &ConfigManager::GetInstance();
+    m_context->Logging       = Logger::GetInstance();
+    m_context->Window        = m_window.get();
+    m_context->MainTimer     = m_mainTimer.get();
+    m_context->Dispatcher    = MessageDispatcher::GetInstance();
+    m_context->Registry      = m_registry.get();
+    m_context->FrameDriver   = m_frameDriver;
+    m_context->DeviceContext = m_deviceContext.get();
+    m_context->InputSys      = &InputSystem::Get();
+    m_context->CameraMgr     = &CameraManager::GetInstance();
+    
+    // 关联配置
+    m_frameDriver->SetGameContext(m_context.get());
+    
+    return m_context.get();
+}
+```
+
+### 3.3 错误处理与清理
+
+```cpp
+void Bootstrap::Shutdown() {
+    // 按逆序清理资源
+    ShutdownSchedulerContext();      // FrameDriver 清理
+    m_context.reset();               // GameContext
+    m_deviceContext.reset();         // D3D12 设备
+    m_window.reset();                // 窗口
+    m_registry.reset();              // ECS Registry
+    MessageDispatcher::Shutdown();   // 事件系统
+    Logger::Shutdown();              // 日志
+    ConfigManager::GetInstance().Shutdown();  // 配置
+    GameNetworkingSockets_Kill();    // 网络
+}
+```
+
+---
+
+## 4. 公开接口
+
+| 方法 | 用途 | 调用方 |
+|:----|:-----|:-------|
+| `Run()` | 初始化所有基础设施模块 | main/wWinMain |
+| `CreateContext()` | 创建并填充 GameContext | main/wWinMain |
+| `GetRegistry()` | 获取 ECS Registry 引用 | 外部（如调度器初始化） |
+| `Shutdown()` | 清理所有资源 | 析构函数自动调用 |
+
+---
 
 ## 5. 设计原则
 
 | 原则 | 说明 |
-|:-----|:-----|
-| **配置驱动** | 根据配置文件决定初始化哪些模块 |
-| **按需初始化** | 只初始化配置中启用的模块 |
-| **快速失败** | 配置无效或初始化失败时立即终止 |
-| **Context 填充** | 通过 Context 统一注入能力，而非单独注入 |
-| **单一职责** | Bootstrap 只做装配，不做运行 |
-|**所有权分离**|	Bootstrap 拥有子系统对象（unique_ptr），Context 仅引用（裸指针）|
-
+|:----|:-----|
+| **配置驱动** | 根据 ConfigManager 的配置决定初始化参数 |
+| **按顺序初始化** | 严格遵守依赖关系：Config → Logger → Window → D3D12 → 其他 |
+| **快速失败** | 任何模块初始化失败立即抛出异常，不继续执行 |
+| **所有权分离** | Bootstrap 用 `unique_ptr` 拥有对象，Context 用裸指针引用 |
+| **单一职责** | Bootstrap 只做装配，不持有主循环 |
+| **异常安全** | 初始化失败时自动调用 Shutdown() 清理已分配资源 |
 
 ---
 
-## 6. 未来扩展
+## 6. 初始化失败处理流程图
 
-随着引擎发展，Bootstrap 将逐步初始化更多子系统：
+```mermaid
+flowchart TD
+    START([Bootstrap::Run]) --> C1[InitializeConfigManager]
+    C1 -->|失败| FAIL[抛出异常]
+    C1 -->|成功| C2[InitializeLogging]
+    C2 -->|失败| FAIL
+    C2 -->|成功| C3[CreateMainWindow]
+    C3 -->|失败| FAIL
+    C3 -->|成功| C4[InitializeD3DDeviceContext]
+    C4 -->|失败| FAIL
+    C4 -->|成功| C5[InitializeDebugUI]
+    C5 -->|失败| FAIL
+    C5 -->|成功| C6[Init MessageDispatcher]
+    C6 -->|失败| FAIL
+    C6 -->|成功| C7[Init InputSystem]
+    C7 -->|失败| FAIL
+    C7 -->|成功| C8[InitializeRegistry]
+    C8 -->|失败| FAIL
+    C8 -->|成功| C9[InitializeFrameDriver]
+    C9 -->|失败| FAIL
+    C9 -->|成功| SUCCESS[初始化完成]
+    
+    FAIL --> SHUTDOWN[Shutdown 清理]
+    SHUTDOWN --> RETHROW[重新抛出异常]
+
+    style FAIL fill:#ffcdd2,stroke:#c62828
+    style SUCCESS fill:#c8e6c9,stroke:#2e7d32
+```
+
+---
+
+## 7. 未来扩展
 
 | 顺序 | 子系统 | Context 字段 | 说明 |
 |:----:|:-------|:-------------|:-----|
-| 5 | Memory Allocator | MemoryAllocator* | 内存管理器 |
-| 6 | File System | FileSystem* | 文件系统 |
-| 7 | Render Backend | Renderer* | 渲染后端 (DX12/Vulkan) |
-| 8 | Audio System | AudioSystem* | 音频系统 |
-| 9 | Input System | InputSystem* | 输入系统 |
-| 10 | Physics System | PhysicsSystem* | 物理系统 |
+| 11 | Memory Allocator | MemoryAllocator* | 内存管理器 |
+| 12 | File System | FileSystem* | 虚拟文件系统 |
+| 13 | Audio System | AudioSystem* | 音频系统 |
+| 14 | Physics System | PhysicsSystem* | 物理系统 |
+| 15 | Script Engine | ScriptEngine* | 脚本引擎（Lua/Python） |
 
-所有新增子系统都遵循相同的模式：Bootstrap 创建 → 填充到 Context → Game 通过 Context 使用。
+所有新增子系统遵循相同模式：Bootstrap 创建/初始化 → 填充到 GameContext → Game 通过 Context 使用。
+
+

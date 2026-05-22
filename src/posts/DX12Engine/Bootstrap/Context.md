@@ -7,366 +7,499 @@ tag:
   - 上下文
 ---
 
-# Context (上下文层)
+# GameContext (游戏上下文)
 
-## 1. 概述
+## 1. 定位与职责
 
-Context 是游戏引擎的**中间层**，作为 Bootstrap 和 Game 之间的**数据容器和接口契约**。
+### 定位
 
-| 职责定位     | 说明                                                       |
-| :----------- | :--------------------------------------------------------- |
-| **做什么**   | 持有能力指针（Window、Renderer、Logging 等），定义接口契约 |
-| **不做什么** | 不创建对象、不执行业务逻辑、不持有状态                     |
+GameContext 是游戏引擎的**依赖注入容器**和**便捷访问层**，作为各模块之间的**统一访问入口**。
 
-**设计哲学**：Context 是"容器 + 接口"，它定义了 Game 需要使用哪些能力，但不关心这些能力如何创建。它解耦了"使用者"（Game）和"提供者"（Bootstrap）。
+- **上游依赖**：由 `Bootstrap` 创建并填充所有子系统指针
+- **下游服务**：为 `FrameDriver`、`DebugUIManager`、各 `System`、`Game` 等提供统一的能力访问
+
+### 核心职责
+
+| 职责 | 说明 |
+|:----|:-----|
+| **持有能力指针** | 存储所有核心子系统的裸指针（Window、DeviceContext、Registry 等） |
+| **提供便捷方法** | 封装深层调用链，避免模块间层层传递依赖 |
+| **统一访问入口** | 任何需要访问多个模块的地方，都可以持有 `GameContext*` |
+| **有效性校验** | 提供 `IsValid()` 方法检查所有必要指针是否已设置 |
+
+### 职责边界
+
+| 职责 | Bootstrap | GameContext | 各模块 | Game |
+|:----|:---------:|:-----------:|:------:|:----:|
+| 创建具体对象 | ✅ | ❌ | ❌ | ❌ |
+| 持有能力指针 | ❌ | ✅ | ❌ | ❌ |
+| 封装便捷方法 | ❌ | ✅ | ❌ | ❌ |
+| 执行业务逻辑 | ❌ | ❌ | ✅ | ✅ |
+| 注入到其他模块 | ❌ | ✅ (作为参数传递) | ❌ | ❌ |
 
 ---
 
 ## 2. 核心概念
 
-### 2.1 为什么需要 Context？
+### 2.1 为什么需要 GameContext？
 
 ```
-直接注入的问题：
-Bootstrap ──→ Game
-  ❌ Game 必须知道所有具体类型
-  ❌ 每次新增能力都要修改 Game 构造函数
-  ❌ 违反开闭原则
+传统层层传递的问题：
+Window ──→ DeviceContext ──→ CommandManager ──→ CommandAllocator
+         ↑
+    每一层都要传递依赖
 
-使用 Context 的优势：
-Bootstrap ──→ Context ──→ Game
-  ✅ Game 只需知道 Context 接口
-  ✅ 新增能力只需扩展 Context
-  ✅ 关注点分离
+使用 GameContext 的优势：
+GameContext ──→ 任何模块
+    ├── DeviceContext ──→ 深层调用
+    ├── Window
+    ├── Registry
+    └── ...
+    模块只需持有 GameContext，按需获取能力
 ```
 
-### 2.2 Context vs 具体能力
+### 2.2 便捷方法的作用
 
-| 维度         | Context               | 具体能力 (如 IRenderer)       |
-| :----------- | :-------------------- | :---------------------------- |
-| **本质**     | 容器（Container）     | 服务接口（Service Interface） |
-| **职责**     | 持有指针、定义变量    | 定义"能做什么"（Draw、Clear） |
-| **生命周期** | 创建由 Bootstrap 管理 | 创建由 Bootstrap 管理         |
-| **使用方式** | 被 Game 持有并访问    | Game 通过 Context 间接使用    |
+GameContext 封装了常见的深层调用链，避免各模块重复编写相同代码：
 
-### 2.3 能力流动
+```cpp
+// ❌ 没有 GameContext 时：需要层层传递或重复获取
+auto& deviceCtx = GetDeviceContext();
+auto& cmdMgr = deviceCtx.GetCommandManager();
+auto allocator = cmdMgr.AcquireAllocator<DIRECT>(fenceValue);
+auto cmdList = cmdMgr.AcquireCommandList(allocator);
+// 每个需要命令列表的地方都要重复这些代码
 
-```
-┌─────────────┐
-│  Bootstrap  │  ← 创建具体实现（DX12Renderer、FileSystem 等）
-└──────┬──────┘
-       │
-       │ 填充能力
-       ▼
-┌─────────────┐
-│   Context   │  ← 持有能力指针（仅接口类型）
-│  (数据容器)   │
-└──────┬──────┘
-       │
-       │ 注入
-       ▼
-┌─────────────┐
-│    Game     │  ← 通过 Context 访问能力
-└─────────────┘
+// ✅ 使用 GameContext 便捷方法
+auto allocator = ctx->GetAllocatorHandle<DIRECT>(fenceValue);
+auto cmdList = ctx->AcquireCommandListHandle<DIRECT>(allocator);
+// 一行搞定，内部封装了调用链
 ```
 
 ---
 
-## 3. Context 的设计
+## 3. 数据结构
 
-### 3.1 核心结构
+### 3.1 核心成员变量
 
 ```cpp
-// Context 是一个纯数据容器，不包含任何业务逻辑
 class GameContext {
 public:
-    // ── 基础子系统指针 ──
-    IWindow*      Window      = nullptr;   // 窗口管理
-    IRenderer*    Renderer    = nullptr;   // 渲染器
-    IConfig*      Config      = nullptr;   // 配置管理
-    ILogging*     Logging     = nullptr;   // 日志系统
-    IFileSystem*  FileSystem  = nullptr;   // 文件系统
+    // ── 基础设施子系统 ──
+    Platform::Window*           Window      = nullptr;
+    ConfigManager*              Config      = nullptr;
+    Logger::Logger*             Logging     = nullptr;
+    GameTimer*                  MainTimer   = nullptr;
+    Event::MessageDispatcher*   Dispatcher  = nullptr;
 
-    // ── 游戏模块指针 ──
-    IInputSystem*    InputSystem   = nullptr;
-    IAudioSystem*    AudioSystem   = nullptr;
-    IPhysicsSystem*  PhysicsSystem = nullptr;
+    // ── 调度与数据层 ──
+    Scheduler::FrameDriver*     FrameDriver = nullptr;
+    ECS::Registry*              Registry    = nullptr;
 
-    // ── 便捷访问方法 ──
-    bool IsValid() const;
-    void Release();  // 释放所有指针（但 Context 本身不负责销毁对象）
-};
+    // ── 渲染子系统 ──
+    Renderer::D3D12DeviceContext* DeviceContext = nullptr;
+    Renderer::CameraManager*      CameraMgr     = nullptr;
 
-// 接口示例
-class IRenderer {
-public:
-    virtual void Clear() = 0;
-    virtual void Draw() = 0;
-    virtual ~IRenderer() = default;
+    // ── 输入系统 ──
+    Input::InputSystem*         InputSys    = nullptr;
 };
 ```
 
-### 3.2 使用示例
+### 3.2 便捷方法
 
-```cpp
-// Bootstrap 负责创建和填充 Context
-class Bootstrap {
-public:
-    GameContext* CreateContext() {
-        auto ctx = new GameContext();
-
-        // 创建具体实现
-        ctx->Window    = new DX12Window();
-        ctx->Renderer  = new DX12Renderer();
-        ctx->Logging    = new FileLogging();
-        ctx->Config     = new JsonConfigManager();
-
-        return ctx;
-    }
-};
-
-// Game 只依赖 Context 接口
-class Game {
-private:
-    GameContext* m_Context;  // 单一的注入点
-
-public:
-    Game(GameContext* ctx) : m_Context(ctx) {}
-
-    void Render() {
-        // 通过 Context 访问能力
-        m_Context->Renderer->Clear();
-        m_Context->Renderer->Draw();
-    }
-};
-```
+| 方法 | 用途 | 封装内容 |
+|:----|:-----|:---------|
+| `GetBackBufferIndex()` | 获取当前后台缓冲区索引 | `DeviceContext->GetSwapChainManager().GetCurrentIndex()` |
+| `GetBackBuffer()` | 获取当前后台缓冲区资源 | `DeviceContext->GetSwapChainManager().GetCurrentBackBuffer()` |
+| `GetFenceValue()` | 获取指定队列的 Fence 值 | `DeviceContext->GetCommandManager().GetCompletedFenceValue()` |
+| `FlushAllQueues()` | 刷新所有命令队列 | `DeviceContext->GetCommandManager().FlushAllQueues()` |
+| `GetAllocatorHandle<T>()` | 获取命令分配器句柄 | `DeviceContext->GetCommandManager().AcquireAllocator<T>()` |
+| `AcquireCommandListHandle<T>()` | 获取命令列表句柄 | `DeviceContext->GetCommandManager().AcquireCommandListHandle<T>()` |
+| `GetCommandList<T>()` | 根据句柄获取命令列表 | `DeviceContext->GetCommandManager().GetCommandList<T>()` |
+| `ReleaseCommandList<T>()` | 释放命令列表 | `DeviceContext->GetCommandManager().ReleaseCommandList<T>()` |
+| `ReleaseAllocator<T>()` | 释放命令分配器 | `DeviceContext->GetCommandManager().ReleaseAllocator<T>()` |
+| `GetNextSequence()` | 获取下一个序列号 | `DeviceContext->GetCommandManager().GetNextSequence()` |
 
 ---
 
 ## 4. 架构图表
 
-### 4.1 三层架构全景
+### 4.1 GameContext 作为统一访问入口
 
 ```mermaid
 graph TB
-    subgraph "启动层 (Bootstrap)"
-        B["Bootstrap"]
-        B1["创建 Context"]
-        B2["填充能力"]
-        B3["异常处理"]
+    subgraph "持有 GameContext 的模块"
+        FD[FrameDriver]
+        DUI[DebugUIManager]
+        SYS[各种 System]
+        GAME[Game]
     end
 
-    subgraph "中间层 (Context)"
-        C["GameContext"]
-        C1["Window*"]
-        C2["Renderer*"]
-        C3["Logging*"]
-        C4["Config*"]
-    end
+    subgraph "GameContext"
+        CTX[GameContext]
+        
+        subgraph "指针字段"
+            W[Window*]
+            DC[D3D12DeviceContext*]
+            REG[Registry*]
+            TIM[GameTimer*]
+            CFG[ConfigManager*]
+            LOG[Logger*]
+            DISP[MessageDispatcher*]
+            INPUT[InputSystem*]
+            CAM[CameraManager*]
+        end
 
-    subgraph "运行层 (Game)"
-        G["Game"]
-        G1["Run()"]
-        G2["Update()"]
-        G3["Render()"]
-        G4["Shutdown()"]
-    end
-
-    B -->|"创建"| C
-    B -->|"填充"| C1
-    B -->|"填充"| C2
-    B -->|"填充"| C3
-    B -->|"填充"| C4
-    C -->|"注入"| G
-    G -->|"使用"| C1
-    G -->|"使用"| C2
-    G -->|"使用"| C3
-    G -->|"使用"| C4
-
-    style B fill:#e8f5e9,stroke:#2e7d32
-    style C fill:#fff3e0,stroke:#e65100
-    style G fill:#e3f2fd,stroke:#1565c0
-    style C1 fill:#fff,stroke:#ccc
-    style C2 fill:#fff,stroke:#ccc
-    style C3 fill:#fff,stroke:#ccc
-    style C4 fill:#fff,stroke:#ccc
-```
-
-### 4.2 数据流时序图
-
-```mermaid
-sequenceDiagram
-    participant main
-    participant Bootstrap
-    participant Context as GameContext
-    participant Game
-
-    main->>Bootstrap: Initialize()
-    Activate Bootstrap
-
-    Bootstrap->>Context: new GameContext()
-    Note over Context: 创建空的上下文容器
-
-    Bootstrap->>Context: Context->Window = new DX12Window()
-    Bootstrap->>Context: Context->Renderer = new DX12Renderer()
-    Bootstrap->>Context: Context->Logging = new FileLogging()
-    Bootstrap->>Context: Context->Config = new JsonConfig()
-    Note over Context: 填充所有能力
-
-    Bootstrap->>Game: new Game(Context)
-    Context-->>Game: Context 指针
-    Deactivate Bootstrap
-
-    Game->>Game: Run()
-    loop Game Loop
-        Game->>Context: Context->Window->ProcessMessages()
-        Game->>Context: Context->Renderer->Clear()
-        Game->>Context: Context->Renderer->Draw()
-        Game->>Context: Context->Logging->Log("Frame rendered")
-    end
-
-    Game->>Game: Shutdown()
-    Game-->>main: exitCode
-```
-
-### 4.3 依赖关系图
-
-```mermaid
-graph LR
-    subgraph "启动层"
-        Bootstrap["Bootstrap"]
-    end
-
-    subgraph "中间层"
-        Context["GameContext"]
-        subgraph "持有的指针"
-            Window["Window*"]
-            Renderer["Renderer*"]
-            Logging["Logging*"]
-            Config["Config*"]
+        subgraph "便捷方法"
+            M1[GetBackBufferIndex]
+            M2[GetAllocatorHandle]
+            M3[AcquireCommandListHandle]
+            M4[FlushAllQueues]
         end
     end
 
-    subgraph "运行层"
-        Game["Game"]
-        GameLoop["GameLoop"]
+    subgraph "底层模块"
+        SW[SwapChainManager]
+        CM[CommandManager]
+        CP[CommandAllocatorPool]
+        CLP[CommandListPool]
     end
 
-    Bootstrap -->|"new"| Context
-    Bootstrap -->|"填充"| Window
-    Bootstrap -->|"填充"| Renderer
-    Bootstrap -->|"填充"| Logging
-    Bootstrap -->|"填充"| Config
+    FD --> CTX
+    DUI --> CTX
+    SYS --> CTX
+    GAME --> CTX
 
-    Context -->|"注入"| Game
-    Window -->|"使用"| GameLoop
-    Renderer -->|"使用"| GameLoop
-    Game -->|"拥有"| GameLoop
+    CTX -->|持有指针| DC
+    DC --> SW
+    DC --> CM
+    CM --> CP
+    CM --> CLP
 
-    style Bootstrap fill:#e8f5e9,stroke:#2e7d32
-    style Context fill:#fff3e0,stroke:#e65100
-    style Game fill:#e3f2fd,stroke:#1565c0
+    M1 -.->|封装| SW
+    M2 -.->|封装| CP
+    M3 -.->|封装| CLP
+
+    style CTX fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style FD fill:#e3f2fd,stroke:#1565c0
+    style DUI fill:#e3f2fd,stroke:#1565c0
+    style SYS fill:#e3f2fd,stroke:#1565c0
+    style GAME fill:#e3f2fd,stroke:#1565c0
 ```
 
-### 4.4 扩展性示意
+### 4.2 三层依赖关系图
+
+```mermaid
+graph TD
+    subgraph "启动层 (Bootstrap)"
+        B[Bootstrap]
+    end
+
+    subgraph "上下文层 (GameContext)"
+        CTX[GameContext]
+        W[Window*]
+        DC[D3D12DeviceContext*]
+        REG[ECS::Registry*]
+        FD[FrameDriver*]
+        TIM[GameTimer*]
+        CFG[ConfigManager*]
+        LOG[Logger*]
+        DISP[MessageDispatcher*]
+        INPUT[InputSystem*]
+        CAM[CameraManager*]
+    end
+
+    subgraph "业务层 (各模块)"
+        GAME[Game]
+        SYSTEMS[各种 System]
+        DEBUG[DebugUIManager]
+    end
+
+    B -->|创建并填充| CTX
+    B -->|注入| W
+    B -->|注入| DC
+    B -->|注入| REG
+    B -->|注入| FD
+    B -->|注入| TIM
+    B -->|注入| CFG
+    B -->|注入| LOG
+    B -->|注入| DISP
+    B -->|注入| INPUT
+    B -->|注入| CAM
+
+    CTX -->|作为参数传递| GAME
+    CTX -->|作为参数传递| SYSTEMS
+    CTX -->|作为参数传递| DEBUG
+
+    style B fill:#e8f5e9,stroke:#2e7d32
+    style CTX fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style GAME fill:#e3f2fd,stroke:#1565c0
+    style SYSTEMS fill:#e3f2fd,stroke:#1565c0
+    style DEBUG fill:#e3f2fd,stroke:#1565c0
+```
+
+### 4.3 初始化与填充时序图
+
+```mermaid
+sequenceDiagram
+    participant Main as main()
+    participant BS as Bootstrap
+    participant CTX as GameContext
+    participant WIN as Window
+    participant D3D as D3D12DeviceContext
+    participant REG as Registry
+    participant FD as FrameDriver
+
+    Main->>BS: Run()
+    BS->>BS: InitializeModules()
+    
+    Note over BS: 创建各子系统
+    BS->>WIN: Create()
+    BS->>D3D: Initialize()
+    BS->>REG: new Registry()
+    BS->>FD: InitializeSchedulerContext()
+
+    Main->>BS: CreateContext()
+    activate BS
+    
+    BS->>CTX: new GameContext()
+    
+    BS->>CTX: Window = WIN
+    BS->>CTX: DeviceContext = D3D
+    BS->>CTX: Registry = REG
+    BS->>CTX: FrameDriver = FD
+    BS->>CTX: Config = &ConfigManager
+    BS->>CTX: Logging = &Logger
+    BS->>CTX: MainTimer = timer
+    BS->>CTX: Dispatcher = MessageDispatcher::GetInstance()
+    BS->>CTX: InputSys = &InputSystem::Get()
+    BS->>CTX: CameraMgr = &CameraManager::GetInstance()
+    
+    CTX-->>BS: GameContext*
+    deactivate BS
+
+    Main->>FD: SetGameContext(CTX)
+    Main->>DEBUG: SetGameContext(CTX)
+    Main->>GAME: new Game(CTX)
+```
+
+### 4.4 便捷方法调用链封装
+
+```mermaid
+flowchart LR
+    subgraph "调用方"
+        USER[任何持有 GameContext 的模块]
+    end
+
+    subgraph "GameContext 便捷方法"
+        M[ctx->GetAllocatorHandle&lt;DIRECT&gt;]
+    end
+
+    subgraph "原始调用链"
+        DC[D3D12DeviceContext]
+        CM[CommandManager]
+        CP[CommandAllocatorPool]
+        RES[Allocator Handle]
+    end
+
+    USER -->|一行调用| M
+    M -.->|封装| DC
+    DC --> CM
+    CM --> CP
+    CP --> RES
+    RES -->|返回| USER
+
+    style M fill:#fff3e0,stroke:#e65100
+    style DC fill:#e8f5e9,stroke:#2e7d32
+    style CM fill:#e8f5e9,stroke:#2e7d32
+    style CP fill:#e8f5e9,stroke:#2e7d32
+```
+
+### 4.5 模块持有 GameContext 关系图
 
 ```mermaid
 graph TB
-    subgraph "基础 Context"
-        C1["Window*"]
-        C2["Renderer*"]
+    subgraph "核心模块 (持有 GameContext*)"
+        FD[FrameDriver]
+        DUI[DebugUIManager]
     end
 
-    subgraph "扩展 Context"
-        C3["Logging*"]
-        C4["Config*"]
-        C5["FileSystem*"]
+    subgraph "系统模块 (可通过 Registry 获取 GameContext)"
+        RS[RenderSystem]
+        IS[InputSystem 处理器]
+        AS[AudioSystem]
     end
 
-    subgraph "高级 Context"
-        C6["InputSystem*"]
-        C7["AudioSystem*"]
-        C8["PhysicsSystem*"]
+    subgraph "Game 层"
+        GAME[Game]
+        GS[GameState]
     end
 
-    C1 & C2 --> C3 & C4 & C5
-    C3 & C4 & C5 --> C6 & C7 & C8
+    subgraph "GameContext"
+        CTX[GameContext]
+    end
 
-    style C1 fill:#bbdefb,stroke:#1565c0
-    style C2 fill:#bbdefb,stroke:#1565c0
-    style C3 fill:#c8e6c9,stroke:#2e7d32
-    style C4 fill:#c8e6c9,stroke:#2e7d32
-    style C5 fill:#c8e6c9,stroke:#2e7d32
-    style C6 fill:#ffe0b2,stroke:#e65100
-    style C7 fill:#ffe0b2,stroke:#e65100
-    style C8 fill:#ffe0b2,stroke:#e65100
+    FD -->|构造注入| CTX
+    DUI -->|SetGameContext| CTX
+    GAME -->|构造注入| CTX
+    GS -->|从 Game 获取| CTX
+    RS -.->|通过 FrameDriver 间接获取| CTX
+    IS -.->|通过 InputSystem 持有| CTX
+    AS -.->|后续扩展| CTX
+
+    style CTX fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style FD fill:#e3f2fd,stroke:#1565c0
+    style DUI fill:#e3f2fd,stroke:#1565c0
+    style GAME fill:#e3f2fd,stroke:#1565c0
+```
+
+### 4.6 数据流向图
+
+```mermaid
+flowchart TD
+    subgraph "输入源"
+        WIN[Window<br/>窗口消息]
+    end
+
+    subgraph "GameContext"
+        CTX[GameContext]
+        IB[RawInputBuffer<br/>通过 Window 获取]
+    end
+
+    subgraph "消费方"
+        IS[InputSystem<br/>处理原始输入]
+        FD[FrameDriver<br/>驱动帧循环]
+        RS[RenderSystem<br/>执行渲染]
+        DUI[DebugUIManager<br/>显示调试信息]
+    end
+
+    WIN -->|WM_INPUT| IB
+    IB -->|GetRawInputBuffer| CTX
+    CTX -->|InputSys->Process| IS
+    CTX -->|FrameDriver->Update| FD
+    CTX -->|DeviceContext->Execute| RS
+    CTX -->|DebugUI->Draw| DUI
+
+    style CTX fill:#fff3e0,stroke:#e65100,stroke-width:2px
 ```
 
 ---
 
-## 5. Context 的设计原则
+## 5. 使用示例
 
-| 原则           | 说明                                                                    |
-| :------------- | :---------------------------------------------------------------------- |
-| **纯数据容器** | 只包含指针和 getter/setter，不包含业务逻辑                              |
-| **单一注入点** | Game 通过一个 Context 对象获取所有能力                                  |
-| **接口契约**   | Context 中只声明接口类型（IRenderer*），不声明具体类型（DX12Renderer*） |
-| **所有权分离** | Context 持有指针但不负责销毁，由创建者（Bootstrap）负责生命周期         |
-| **可扩展性**   | 新增能力只需在 Context 中添加新指针，无需修改 Game                      |
-
----
-
-## 6. 与其他模块的关系
-
-### 6.1 职责边界
-
-| 操作         | Bootstrap | Context |   Game   |
-| :----------- | :-------: | :-----: | :------: |
-| 创建具体对象 |    ✅     |   ❌    |    ❌    |
-| 持有能力指针 |    ❌     |   ✅    |    ❌    |
-| 使用能力     |    ❌     |   ❌    |    ✅    |
-| 管理生命周期 |   创建    | 不负责  | 触发释放 |
-
-### 6.2 类型可见性
+### 5.1 FrameDriver 持有 GameContext
 
 ```cpp
-// Bootstrap (可见所有类型)
-class Bootstrap {
-    void CreateGame() {
-        auto ctx = new GameContext();
-        ctx->Renderer = new DX12Renderer();  // ✅ 可见具体类型
-        ctx->Window   = new DX12Window();
+class FrameDriver {
+    GameContext* m_Context;
+public:
+    void SetGameContext(GameContext* ctx) { m_Context = ctx; }
+    
+    void Execute() {
+        // 通过 Context 访问各子系统
+        auto& registry = *m_Context->Registry;
+        auto& device = *m_Context->DeviceContext;
+        auto timer = m_Context->MainTimer;
+        
+        // 使用便捷方法
+        auto allocator = m_Context->GetAllocatorHandle<DIRECT>(GetFenceValue());
+        auto cmdList = m_Context->AcquireCommandListHandle<DIRECT>(allocator);
     }
 };
+```
 
-// Context (只可见接口)
-class GameContext {
-    IRenderer* Renderer;  // ✅ 接口类型
-    IWindow*   Window;    // ✅ 接口类型
+### 5.2 System 通过 Registry 间接获取
+
+```cpp
+class RenderSystem : public System {
+    void Update(ECS::Registry& registry, GameContext* ctx) {
+        // 通过传入的 Context 参数访问
+        auto backBuffer = ctx->GetBackBuffer();
+        ctx->FlushAllQueues();
+    }
 };
+```
 
-// Game (只可见 Context)
+### 5.3 Game 持有 GameContext
+
+```cpp
 class Game {
     GameContext* m_Context;
-    void Render() {
-        m_Context->Renderer->Draw();  // ✅ 通过接口使用
+public:
+    Game(GameContext* ctx) : m_Context(ctx) {}
+    
+    void Run() {
+        while (!m_Context->Window->ShouldClose()) {
+            m_Context->Window->ProcessMessages();
+            m_Context->FrameDriver->Execute();
+        }
     }
 };
 ```
 
 ---
 
-## 7. 未来扩展
+## 6. 设计原则
 
-随着引擎发展，Context 可逐步添加：
+| 原则 | 说明 |
+|:----|:-----|
+| **纯数据容器** | 只包含指针和便捷方法，不包含业务逻辑 |
+| **单一注入点** | 各模块只需持有 `GameContext*`，无需依赖多个单例 |
+| **封装调用链** | 便捷方法封装深层调用，避免重复代码 |
+| **所有权分离** | Context 持有裸指针（非拥有），由 Bootstrap 管理生命周期 |
+| **可扩展性** | 新增能力只需添加指针字段和便捷方法 |
 
-|  阶段   | 新增能力          | 说明           |
-| :-----: | :---------------- | :------------- |
-| Phase 1 | MemoryAllocator\* | 内存管理器指针 |
-| Phase 1 | FileSystem\*      | 文件系统指针   |
-| Phase 2 | InputSystem\*     | 输入系统指针   |
-| Phase 2 | AudioSystem\*     | 音频系统指针   |
-| Phase 3 | PhysicsSystem\*   | 物理系统指针   |
-| Phase 3 | AISystem\*        | AI 系统指针    |
+---
 
-所有新增能力遵循相同模式：在 Context 中添加接口指针 → Bootstrap 填充 → Game 使用。
+## 7. 与其他模块的协作
+
+### 7.1 Bootstrap 填充
+
+```cpp
+// Bootstrap 负责填充所有指针
+GameContext* Bootstrap::CreateContext() {
+    m_context = std::make_unique<GameContext>();
+    m_context->Window        = m_window.get();
+    m_context->DeviceContext = m_deviceContext.get();
+    m_context->Registry      = m_registry.get();
+    m_context->FrameDriver   = m_frameDriver;
+    m_context->Config        = &ConfigManager::GetInstance();
+    m_context->Logging       = Logger::GetInstance();
+    m_context->MainTimer     = m_mainTimer.get();
+    m_context->Dispatcher    = MessageDispatcher::GetInstance();
+    m_context->InputSys      = &InputSystem::Get();
+    m_context->CameraMgr     = &CameraManager::GetInstance();
+    return m_context.get();
+}
+```
+
+### 7.2 FrameDriver 关联
+
+```cpp
+// 创建 Context 后关联到 FrameDriver
+m_frameDriver->SetGameContext(m_context.get());
+
+// DebugUIManager 同理
+debugUI.SetGameContext(m_context.get());
+```
+
+### 7.3 职责边界总结
+
+| 操作 | Bootstrap | GameContext | 各模块 |
+|:----|:---------:|:-----------:|:------:|
+| 创建子系统对象 | ✅ | ❌ | ❌ |
+| 持有子系统指针 | ❌ (unique_ptr) | ✅ (裸指针) | ❌ |
+| 封装便捷方法 | ❌ | ✅ | ❌ |
+| 执行业务逻辑 | ❌ | ❌ | ✅ |
+| 校验有效性 | ❌ | ✅ | ❌ |
+
+---
+
+## 8. 未来扩展
+
+| 阶段 | 新增字段 | 对应便捷方法 |
+|:----:|:---------|:-------------|
+| Phase 2 | `FileSystem*` | `ReadFile()`, `WriteFile()` |
+| Phase 2 | `AudioSystem*` | `PlaySound()`, `StopSound()` |
+| Phase 3 | `PhysicsSystem*` | `Raycast()`, `GetGravity()` |
+| Phase 3 | `ScriptEngine*` | `ExecuteScript()`, `LoadScript()` |
