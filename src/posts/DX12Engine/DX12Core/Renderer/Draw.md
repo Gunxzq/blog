@@ -50,24 +50,33 @@ SemanticName="TEXCOORD", SemanticIndex=1 映射到 float2 uv1 : TEXCOORD1;
 ID3D12Resource 是所有资源的底层接口，实际类型和用法是通过 堆（Heap）、描述符（Descriptor/View） 和 标志（Flag） 来区分的，他是纯粹的二进制数据。
 根据接口ID3D12Device[https://learn.microsoft.com/zh-cn/windows/win32/api/d3d12/nf-d3d12-id3d12device-createcommittedresource]：CreateCommittedResource的信息，需要注意如下的内容：
 1. D3D12_RESOURCE_DESC：最重要的一个结构体，描述的是资源。
+
 需要注意此结构体下的字段：
 1. D3D12_RESOURCE_DIMENSION：资源类型，如缓冲区、纹理（1维、2维、3D）。
+
+
+
 | 枚举值 | 寻址坐标 | 数据组织方式 | 特殊效果/核心用途 | 着色器对应类型 | 典型限制 |
 |:---|:---|:---|:---|:---|:---|
 | **`BUFFER`** | 整数索引 | 线性数组 | **通用GPU数据存储**：顶点/索引缓冲、常量缓冲、结构化缓冲、间接执行参数<br>**随机读写**：通过UAV实现任意位置的读写<br>**原子操作**：支持多线程安全的加减、交换等操作 | `Buffer`<br>`StructuredBuffer`<br>`RWBuffer` | 无滤波采样<br>需手动处理边界 |
 | **`TEXTURE1D`** | 1维坐标 (x) | 一行像素 | **颜色查找表(LUT)**：快速色调映射、风格化滤镜<br>**音频可视化**：波形频谱数据<br>**梯度数据**：0→1的渐变色映射<br>**复用纹理硬件**：获得自动过滤和边界处理 | `Texture1D`<br>`RWTexture1D` | 不支持MSAA<br>高度固定为1 |
-| **`TEXTURE2D`** | 2维坐标 (x, y) | 矩形像素网格 | **传统贴图**：漫反射、法线、粗糙度贴图<br>**渲染目标**：屏幕颜色、阴影贴图、G-Buffer<br>**多重采样(MSAA)**：通过`SampleDesc`配置抗锯齿<br>**纹理数组**：`DepthOrArraySize`可创建2D纹理数组 | `Texture2D`<br>`RWTexture2D`<code>Texture2DArray<br>（数组时） | 最常用<br>支持MSAA<br>支持mipmap |
+| **`TEXTURE2D`** | 2维坐标 (x, y) | 矩形像素网格 | **传统贴图**：漫反射、法线、粗糙度贴图<br>**渲染目标**：屏幕颜色、阴影贴图、G-Buffer<br>**多重采样(MSAA)**：通过`SampleDesc`配置抗锯齿<br>**纹理数组**：`DepthOrArraySize`可创建2D纹理数组 | `Texture2D`<br>`RWTexture2D`Texture2DArray<br>（数组时） | 最常用<br>支持MSAA<br>支持mipmap |
 | **`TEXTURE3D`** | 3维坐标 (x, y, z) | 体积数据块(Voxel) | **体积雾/云/烟**：光线在介质中散射的真实模拟<br>**医学影像**：CT/MRI数据直接体绘制<br>**流体/火焰模拟**：存储体素属性（密度、温度）<br>**距离场(SDF)**：实时光追碰撞检测<br>**体素圆锥追踪GI**：动态全局光照 | `Texture3D`<br>`RWTexture3D` | 内存消耗大<br>不支持MSAA<br>不支持数组<br>无硬件压缩 |
+
 2. D3D12_RESOURCE_FLAGS：资源的标志
-标志位	允许创建的视图类型	主要用途
-无 (0)	SRV（着色器资源视图）	只读纹理/缓冲区（默认能力）
-ALLOW_RENDER_TARGET	RTV（渲染目标视图）	渲染到纹理（如阴影贴图、后处理特效）
-ALLOW_DEPTH_STENCIL	DSV（深度模板视图）	深度测试、模板测试（如阴影映射、遮挡剔除）
-ALLOW_UNORDERED_ACCESS	UAV（无序访问视图）	计算着色器读写、像素着色器原子操作（如粒子系统、后处理模糊）
-DENY_SHADER_RESOURCE	禁止 SRV	优化：仅作为 RT/DS 使用，提示驱动节省资源（如交换链后台缓冲区）
-ALLOW_CROSS_ADAPTER	共享相关	多 GPU 间共享资源
-ALLOW_SIMULTANEOUS_ACCESS	共享相关	多 GPU 同时访问（高级场景）
-VIDEO_DECODE_REFERENCE_ONLY	视频解码	仅作为视频解码参考帧
+
+
+
+| 标志位 | 允许创建的视图类型 | 主要用途 |
+|:---|:---|:---|
+|无 (0)	|SRV（着色器资源视图）	|只读纹理/缓冲区（默认能力）|
+|ALLOW_RENDER_TARGET	|RTV（渲染目标视图）	|渲染到纹理（如阴影贴图、后处理特效）|
+|ALLOW_DEPTH_STENCIL	|DSV（深度模板视图）	|深度测试、模板测试（如阴影映射、遮挡剔除）|
+|ALLOW_UNORDERED_ACCESS	|UAV（无序访问视图）	|计算着色器读写、像素着色器原子操作（如粒子系统、后处理模糊）|
+DENY_SHADER_RESOURCE	|禁止 SRV|	优化：仅作为 RT/DS 使用，提示驱动节省资源（如交换链后台缓冲区）|
+|ALLOW_CROSS_ADAPTER	|共享相关|	多 GPU 间共享资源|
+|ALLOW_SIMULTANEOUS_ACCESS	|共享相关|	多 GPU 同时访问（高级场景）|
+|VIDEO_DECODE_REFERENCE_ONLY	|视频解码	|仅作为视频解码参考帧|
 
 
 
@@ -127,6 +136,7 @@ VIDEO_DECODE_REFERENCE_ONLY	视频解码	仅作为视频解码参考帧
 | 交换链后台缓冲区 | `ALLOW_DISPLAY`（通常不直接写） |
 
 3. D3D12_HEAP_PROPERTIES:这是描述资源存储在什么样的堆的结构体
+
 | 枚举值 | 内存位置 | CPU 访问 | GPU 访问 | 核心作用 |
 |:---|:---|:---|:---|:---|
 | **`D3D12_HEAP_TYPE_DEFAULT`** | 显存 (VRAM) | **不可访问** | **最快读写** | GPU 本地存储，存放纹理、顶点缓冲、渲染目标等高频访问的静态数据 |
