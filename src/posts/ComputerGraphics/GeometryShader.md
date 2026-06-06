@@ -45,7 +45,8 @@ void ShaderName(
 1. N：单次调用输出的顶点数量的最大值,**GS**每次输出的顶点数各不相同，但是不会超过N。
 在**GS**每次输出的标量在1~20之间，性能最好。每次调用几何着色器所输出的标量个数为：maxvertexcount与输出的顶点类型结构体中标量个数的乘积。
 ```
-顶点结构体定义了“float3 Position”与“float2 TexCoord”两个成员变量。如果maxvertexcount为4，则几何着色器每次输出20个标量
+顶点结构体定义了“float3 Position”与“float2 TexCoord”两个成员变量。
+如果maxvertexcount为4，则几何着色器每次输出20个标量
 ```
 2. 输入：定义有特定图元的顶点数组
 InputVertexType有如下值：point、line、triangle、lineadj、triangleadj
