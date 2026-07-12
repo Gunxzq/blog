@@ -82,26 +82,52 @@ auto cmdList = ctx->AcquireCommandListHandle<DIRECT>(allocator);
 
 ### 3.1 核心成员变量
 
-```cpp
+```pseudocode
 class GameContext {
-public:
     // ── 基础设施子系统 ──
-    Platform::Window*           Window      = nullptr;
-    ConfigManager*              Config      = nullptr;
-    Logger::Logger*             Logging     = nullptr;
-    GameTimer*                  MainTimer   = nullptr;
-    Event::MessageDispatcher*   Dispatcher  = nullptr;
+    Window*              Window            // 窗口
+    ConfigManager*       Config            // 配置管理
+    Logger*              Logging           // 日志
+    GameTimer*           MainTimer         // 计时器
+    MessageDispatcher*   Dispatcher        // 事件分发
 
     // ── 调度与数据层 ──
-    Scheduler::FrameDriver*     FrameDriver = nullptr;
-    ECS::Registry*              Registry    = nullptr;
+    FrameDriver*         FrameDriver       // 帧循环驱动
+    BackgroundExecutor*  BackgroundExecutor // 异步任务执行器
+    Registry*            Registry          // ECS 实体管理
 
     // ── 渲染子系统 ──
-    Renderer::D3D12DeviceContext* DeviceContext = nullptr;
-    Renderer::CameraManager*      CameraMgr     = nullptr;
+    D3D12DeviceContext*  DeviceContext     // 图形设备
+    CameraManager*       CameraMgr         // 摄像机
+    FrameResourceManager* FrameResourceManager // 帧资源
+    CullingSystem*       CullingSystem     // 可见性剔除
+    LODSystem*           LODSystem         // 层次细节
+    VisibleRaycaster*    VisibleRaycaster  // 射线检测
+    ReflectionProbeManager* ReflectionProbeMgr // 反射探针
+    AmbientOcclusionManager* AmbientOcclusionMgr // 环境光遮蔽
+
+    // ── 资源管理 ──
+    MaterialManager*     MaterialMgr       // 材质
+    TextureManager*      TextureMgr        // 纹理
+    GeometryResourceManager* GeometryResourceManager // 几何体
+    SkeletonManager*     SkeletonMgr       // 骨骼
+    DescriptorHeapCollection* DescriptorHeaps // 描述符堆
+    DepthStencilPool*    DepthStencilPool  // 深度模板池
+    RenderTargetPool*    RenderTargetPool  // 渲染目标池
 
     // ── 输入系统 ──
-    Input::InputSystem*         InputSys    = nullptr;
+    InputManager*        InputMgr          // 输入
+
+    // ── 便捷方法 ──
+    GetBackBufferIndex() -> uint
+    GetBackBuffer() -> ID3D12Resource*
+    GetFenceValue(type) -> uint64
+    FlushAllQueues()
+    GetAllocatorHandle<T>(fence) -> Handle
+    AcquireCommandListHandle<T>(allocator) -> Handle
+    ReleaseCommandList<T>(handle)
+    ReleaseAllocator<T>(handle, fence)
+    ResolvePath(relativePath) -> wstring
 };
 ```
 
@@ -109,16 +135,16 @@ public:
 
 | 方法 | 用途 | 封装内容 |
 |:----|:-----|:---------|
-| `GetBackBufferIndex()` | 获取当前后台缓冲区索引 | `DeviceContext->GetSwapChainManager().GetCurrentIndex()` |
-| `GetBackBuffer()` | 获取当前后台缓冲区资源 | `DeviceContext->GetSwapChainManager().GetCurrentBackBuffer()` |
-| `GetFenceValue()` | 获取指定队列的 Fence 值 | `DeviceContext->GetCommandManager().GetCompletedFenceValue()` |
-| `FlushAllQueues()` | 刷新所有命令队列 | `DeviceContext->GetCommandManager().FlushAllQueues()` |
-| `GetAllocatorHandle<T>()` | 获取命令分配器句柄 | `DeviceContext->GetCommandManager().AcquireAllocator<T>()` |
-| `AcquireCommandListHandle<T>()` | 获取命令列表句柄 | `DeviceContext->GetCommandManager().AcquireCommandListHandle<T>()` |
-| `GetCommandList<T>()` | 根据句柄获取命令列表 | `DeviceContext->GetCommandManager().GetCommandList<T>()` |
-| `ReleaseCommandList<T>()` | 释放命令列表 | `DeviceContext->GetCommandManager().ReleaseCommandList<T>()` |
-| `ReleaseAllocator<T>()` | 释放命令分配器 | `DeviceContext->GetCommandManager().ReleaseAllocator<T>()` |
-| `GetNextSequence()` | 获取下一个序列号 | `DeviceContext->GetCommandManager().GetNextSequence()` |
+| `GetBackBufferIndex()` | 获取当前后台缓冲区索引 | 通过 DeviceContext 获取交换链索引 |
+| `GetBackBuffer()` | 获取当前后台缓冲区资源 | 通过 DeviceContext 获取交换链后台缓冲 |
+| `GetFenceValue()` | 获取指定队列的 Fence 值 | 通过 DeviceContext 获取命令管理器围栏值 |
+| `FlushAllQueues()` | 刷新所有命令队列 | 等待所有 GPU 队列完成 |
+| `GetAllocatorHandle<T>()` | 获取命令分配器句柄 | 通过 DeviceContext 分配命令分配器 |
+| `AcquireCommandListHandle<T>()` | 获取命令列表句柄 | 通过 DeviceContext 获取命令列表 |
+| `ReleaseCommandList<T>()` | 释放命令列表 | 归还命令列表到池 |
+| `ReleaseAllocator<T>()` | 释放命令分配器 | 归还分配器，带 fence 同步 |
+| `GetNextSequence()` | 获取下一个序列号 | 全局唯一序列号 |
+| `ResolvePath()` | 解析相对路径 | 基于项目根目录拼接路径 |
 
 ---
 
@@ -389,52 +415,51 @@ flowchart TD
 
 ### 5.1 FrameDriver 持有 GameContext
 
-```cpp
+```pseudocode
 class FrameDriver {
-    GameContext* m_Context;
-public:
-    void SetGameContext(GameContext* ctx) { m_Context = ctx; }
+    ctx: GameContext*
     
-    void Execute() {
+    SetGameContext(ctx):
+        this.ctx = ctx
+    
+    Tick():
         // 通过 Context 访问各子系统
-        auto& registry = *m_Context->Registry;
-        auto& device = *m_Context->DeviceContext;
-        auto timer = m_Context->MainTimer;
+        registry = ctx.Registry
+        device = ctx.DeviceContext
+        timer = ctx.MainTimer
         
-        // 使用便捷方法
-        auto allocator = m_Context->GetAllocatorHandle<DIRECT>(GetFenceValue());
-        auto cmdList = m_Context->AcquireCommandListHandle<DIRECT>(allocator);
-    }
-};
+        // 使用便捷方法获取命令列表
+        allocator = ctx.GetAllocatorHandle<DIRECT>(fenceValue)
+        cmdList = ctx.AcquireCommandListHandle<DIRECT>(allocator)
+}
 ```
 
 ### 5.2 System 通过 Registry 间接获取
 
-```cpp
-class RenderSystem : public System {
-    void Update(ECS::Registry& registry, GameContext* ctx) {
+```pseudocode
+class RenderSystem : System {
+    Update(registry: Registry, ctx: GameContext*):
         // 通过传入的 Context 参数访问
-        auto backBuffer = ctx->GetBackBuffer();
-        ctx->FlushAllQueues();
-    }
-};
+        backBuffer = ctx.GetBackBuffer()
+        ctx.FlushAllQueues()
+}
 ```
 
 ### 5.3 Game 持有 GameContext
 
-```cpp
+```pseudocode
 class Game {
-    GameContext* m_Context;
-public:
-    Game(GameContext* ctx) : m_Context(ctx) {}
+    ctx: GameContext*
     
-    void Run() {
-        while (!m_Context->Window->ShouldClose()) {
-            m_Context->Window->ProcessMessages();
-            m_Context->FrameDriver->Execute();
-        }
-    }
-};
+    Game(context):
+        ctx = context
+    
+    Run():
+        while not ctx.Window.ShouldClose():
+            ctx.Window.ProcessMessages()
+            ctx.BackgroundExecutor.Tick()
+            ctx.FrameDriver.Tick()
+}
 ```
 
 ---
@@ -455,32 +480,48 @@ public:
 
 ### 7.1 Bootstrap 填充
 
-```cpp
+```pseudocode
 // Bootstrap 负责填充所有指针
-GameContext* Bootstrap::CreateContext() {
-    m_context = std::make_unique<GameContext>();
-    m_context->Window        = m_window.get();
-    m_context->DeviceContext = m_deviceContext.get();
-    m_context->Registry      = m_registry.get();
-    m_context->FrameDriver   = m_frameDriver;
-    m_context->Config        = &ConfigManager::GetInstance();
-    m_context->Logging       = Logger::GetInstance();
-    m_context->MainTimer     = m_mainTimer.get();
-    m_context->Dispatcher    = MessageDispatcher::GetInstance();
-    m_context->InputSys      = &InputSystem::Get();
-    m_context->CameraMgr     = &CameraManager::GetInstance();
-    return m_context.get();
-}
+Bootstrap::CreateContext():
+    context = new GameContext()
+    context.Window        = m_window
+    context.DeviceContext = m_deviceContext
+    context.Registry      = m_registry
+    context.FrameDriver   = m_frameDriver
+    context.Config        = ConfigManager.GetInstance()
+    context.Logging       = Logger.GetInstance()
+    context.MainTimer     = m_mainTimer
+    context.Dispatcher    = MessageDispatcher.GetInstance()
+    context.BackgroundExecutor = m_backgroundExecutor
+    context.InputMgr      = InputManager.Get()
+    context.CameraMgr     = CameraManager.GetInstance()
+    context.DescriptorHeaps = m_descriptorHeaps
+    context.FrameResourceManager = m_frameResourceManager
+    context.GeometryResourceManager = m_geometryResourceManager
+    context.MaterialMgr   = m_materialManager
+    context.TextureMgr    = m_textureManager
+    context.SkeletonMgr   = m_skeletonManager
+    
+    // 初始化的模块
+    CameraManager.GetInstance().Initialize(width, height)
+    ReflectionProbeManager.Initialize(device, descriptorHeaps)
+    AmbientOcclusionManager.Initialize(device, descriptorHeaps, width, height)
+    VisibleRaycaster.Initialize(registry)
+    
+    // 关联到 FrameDriver
+    context.FrameDriver.SetGameContext(context)
+    DebugUI.SetGameContext(context)
+    
+    return context
 ```
 
 ### 7.2 FrameDriver 关联
 
-```cpp
-// 创建 Context 后关联到 FrameDriver
-m_frameDriver->SetGameContext(m_context.get());
-
-// DebugUIManager 同理
-debugUI.SetGameContext(m_context.get());
+```pseudocode
+// 创建 Context 后关联到 FrameDriver 和 DebugUI
+FrameDriver.SetGameContext(context)
+DebugUI.SetGameContext(context)
+DebugUI.AutoRegisterToFrameDriver(context)
 ```
 
 ### 7.3 职责边界总结

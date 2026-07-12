@@ -35,22 +35,24 @@ Game 不创建基础子系统，而是接收注入的 GameContext：
 
 | 能力 | 来源 (Context) | 用途 |
 |:-----|:--------------|:-----|
-| Window | Context->Window | 窗口消息处理、渲染目标 |
-| Renderer | Context->Renderer | 渲染画面 |
-| Config | Context->Config | 读取游戏配置 |
-| Logging | Context->Logging | 记录游戏日志 |
+| Window | ctx->Window | 窗口消息处理 |
+| 图形设备 | ctx->DeviceContext | 渲染画面、命令执行 |
+| Config | ctx->Config | 读取游戏配置 |
+| Logging | ctx->Logging | 记录游戏日志 |
+| 输入 | ctx->InputMgr | 输入状态查询 |
+| 计时 | ctx->MainTimer | DeltaTime 获取 |
+| 调度 | ctx->FrameDriver | 帧循环驱动 |
+| ECS | ctx->Registry | 实体管理 |
 
 ### 2.2 运行主循环
 
-```cpp
-void Game::Run() {
-    while (!m_Context->Window->ShouldClose()) {
-        m_Context->Window->ProcessMessages();  // 消息循环
-        Update();                       // 更新逻辑
-        Render();                       // 渲染画面
-    }
-    Shutdown();
-}
+```pseudocode
+Game::Run():
+    while not Window.ShouldClose():
+        Window.ProcessMessages()       // 消息循环
+        BackgroundExecutor.Tick()      // 异步加载推进
+        FrameDriver.Tick()             // 帧循环调度
+    Shutdown()
 ```
 
 ### 2.3 组合游戏逻辑模块
@@ -129,17 +131,17 @@ sequenceDiagram
     participant Window
     participant InputMgr as InputManager
     participant Logic
-    participant Renderer
+    participant FrameDriver
     participant AudioMgr as AudioManager
 
     Bootstrap->>Context: new GameContext()
-    Bootstrap->>Context: 填充能力
+    Bootstrap->>Context: 填充能力指针
     Bootstrap->>Game: new Game(Context)
     Note over Game: 初始化游戏逻辑模块
 
     Game->>Game: Run()
     loop 每帧
-        Game->>Context: Context->Window->ProcessMessages()
+        Game->>Context: Window.ProcessMessages()
         Context->>Window: ProcessMessages()
         Window-->>Context: 消息处理完成
         Context-->>Game: 完成
@@ -147,16 +149,17 @@ sequenceDiagram
         Game->>InputMgr: ProcessInput()
         InputMgr-->>Game: 输入状态更新
 
+        Game->>Context: BackgroundExecutor.Tick()
+        Context-->>Game: 异步加载推进
+
+        Game->>Context: FrameDriver.Tick()
+        Context->>FrameDriver: Tick()
+        FrameDriver-->>Context: 帧循环完成
+        Context-->>Game: 完成
+
         Game->>Logic: Update(deltaTime)
         Logic->>AudioMgr: Update()
         Logic-->>Game: 逻辑更新完成
-
-        Game->>Context: Context->Renderer->Clear()
-        Context->>Renderer: Clear()
-        Game->>Context: Context->Renderer->Draw()
-        Context->>Renderer: Draw()
-        Renderer-->>Context: 渲染完成
-        Context-->>Game: 完成
     end
 
     Game->>Game: Shutdown()
@@ -323,107 +326,69 @@ graph TB
 
 ### 4.1 基础结构
 
-```cpp
+```pseudocode
 class Game {
-private:
-    // ── 注入的 Context (单一注入点) ──
-    GameContext* m_Context;
+    // 注入的 Context（单一注入点）
+    ctx: GameContext*
 
-    // ── 游戏逻辑模块 (组合) ──
-    std::unique_ptr<InputManager>    m_InputManager;
-    std::unique_ptr<PlayerManager>    m_PlayerManager;
-    std::unique_ptr<LevelManager>     m_LevelManager;
-    std::unique_ptr<AssetManager>     m_AssetManager;
-    std::unique_ptr<AudioManager>     m_AudioManager;
+    // 游戏逻辑模块（组合）
+    inputManager: InputManager
+    playerManager: PlayerManager
+    levelManager: LevelManager
+    assetManager: AssetManager
+    audioManager: AudioManager
 
-    // ── 运行状态 ──
-    bool m_IsRunning;
-
-public:
     // 构造函数接收 Context
-    Game(GameContext* context)
-        : m_Context(context)
-        , m_IsRunning(true) {
-        InitializeModules();
-    }
+    Game(context):
+        ctx = context
+        InitializeModules()
 
     // 主循环
-    int Run() {
-        while (m_Context->Window->ShouldClose() == false && m_IsRunning) {
-            m_Context->Window->ProcessMessages();
-            Update();
-            Render();
-        }
-        Shutdown();
-        return 0;
-    }
+    Run():
+        while not ctx.Window.ShouldClose():
+            ctx.Window.ProcessMessages()
+            ctx.BackgroundExecutor.Tick()
+            ctx.FrameDriver.Tick()
+            Update()
+        Shutdown()
 
-    void Update();    // 更新所有逻辑模块
-    void Render();    // 渲染画面
-    void Shutdown();  // 清理资源
+    Update()    // 更新所有逻辑模块
+    Shutdown()  // 清理资源
 };
 ```
 
 ### 4.2 模块组合示例
 
-```cpp
-void Game::Update() {
-    float deltaTime = CalculateDeltaTime();
-
+```pseudocode
+Game::Update():
     // 通过 Context 访问基础能力
-    m_Context->Logging->Log("Updating frame...");
+    ctx.Logging.Log("Updating frame...")
 
     // 更新基础能力
-    m_InputManager->Update();
+    inputManager.Update()
 
     // 组合游戏逻辑
-    m_PlayerManager->Update(deltaTime);
-    m_LevelManager->Update(deltaTime);
-    m_AudioManager->Update(deltaTime);
-}
-
-void Game::Render() {
-    // 使用 Context 中的 Window 和 Renderer
-    m_Context->Window->BeginFrame();
-    m_Context->Renderer->Clear();
-
-    // 渲染各个逻辑模块
-    m_LevelManager->Render();
-    m_PlayerManager->Render();
-
-    m_Context->Renderer->Present();
-    m_Context->Window->EndFrame();
-}
+    playerManager.Update(deltaTime)
+    levelManager.Update(deltaTime)
+    audioManager.Update(deltaTime)
 ```
 
 ### 4.3 模块注册到 Context
 
-```cpp
-void Game::InitializeModules() {
+```pseudocode
+Game::InitializeModules():
     // 通过 Config 读取配置
-    auto& config = m_Context->Config->GetSection("Game");
+    config = ctx.Config.GetSection("Game")
 
     // 创建并初始化游戏逻辑模块
-    m_InputManager = std::make_unique<InputManager>(m_Context);
-    m_AssetManager = std::make_unique<AssetManager>(
-        m_Context->FileSystem,
-        m_Context->Logging
-    );
-    m_LevelManager = std::make_unique<LevelManager>(
-        m_AssetManager.get(),
-        m_Context->Logging
-    );
-    m_PlayerManager = std::make_unique<PlayerManager>(
-        m_InputManager.get(),
-        config.GetInt("MaxPlayers")
-    );
-    m_AudioManager = std::make_unique<AudioManager>(
-        m_Context->FileSystem
-    );
+    inputManager = new InputManager(ctx)
+    assetManager = new AssetManager(ctx.FileSystem, ctx.Logging)
+    levelManager = new LevelManager(assetManager, ctx.Logging)
+    playerManager = new PlayerManager(inputManager, config.GetInt("MaxPlayers"))
+    audioManager = new AudioManager(ctx.FileSystem)
 
     // 通过 Logging 记录初始化
-    m_Context->Logging->Log("All game modules initialized");
-}
+    ctx.Logging.Log("All game modules initialized")
 ```
 
 ---

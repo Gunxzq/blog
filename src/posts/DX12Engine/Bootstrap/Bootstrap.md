@@ -281,80 +281,161 @@ graph TB
 
 ### 3.1 模块初始化顺序
 
-```cpp
-void Bootstrap::InitializeModules() {
+```pseudocode
+Bootstrap::InitializeModules():
+    // 0. 项目路径与着色器根目录
+    ShaderUtils.SetShaderRoot(projectRoot)
+
     // 1. 配置管理器（基础）
-    InitializeConfigManager("Config");
-    
+    ConfigManager.Initialize(configDir)
+
     // 2. 日志系统（依赖配置）
-    InitializeLogging();
-    
-    // 3. 窗口（依赖配置）
-    CreateMainWindow();
-    
-    // 4. D3D12 设备上下文（依赖窗口句柄）
-    InitializeD3DDeviceContext();
-    
-    // 5. DebugUI（依赖窗口和设备）
-    InitializeDebugUI();
-    
-    // 6. 消息分发器
-    MessageDispatcher::Init();
-    
-    // 7. 输入系统
-    InputSystem::Get().Initialize(inputConfigPath);
-    
-    // 8. ECS Registry
-    InitializeRegistry();
-    
-    // 9. FrameDriver（调度层核心）
-    InitializeFrameDriver();
-    
-    // 10. GameNetworkingSockets
-    GameNetworkingSockets_Init();
-}
+    Logger.Init(logConfig)
+    ErrorReporter.SetLogger(Logger)
+
+    // 3. 输入系统（依赖配置）
+    InputManager.Initialize(configPath, isEditor)
+
+    // 4. 窗口（依赖配置）
+    Window.Create()
+    Window.SetInputManager(inputManager)
+
+    // 5. D3D12 设备上下文（依赖窗口句柄）
+    D3D12DeviceContext.Initialize(params)
+
+    // ─── 资源基础设施 ───
+    // 6. 描述符堆集合
+    DescriptorHeapCollection.Initialize(device, configs, mode)
+    GpuResourceManager.Initialize()
+    DeviceContext.SetDescriptorHeapCollection(descriptorHeaps)
+
+    // 7. 描述符分区注册
+    descriptorHeaps.AddPartition(CBV_SRV_UAV, Texture, 0, 16384)
+    descriptorHeaps.AddPartition(CBV_SRV_UAV, Buffer, 16384, 81920)
+    descriptorHeaps.AddPartition(CBV_SRV_UAV, Shadow, 98304, 1024)
+
+    // 8. 深度缓冲 SRV + 资源池
+    DeviceContext.InitDepthSRV()
+    DepthStencilPool.Initialize(device, descriptorHeaps)
+    RenderTargetPool.Initialize(device, descriptorHeaps)
+
+    // 9. 共享数据存储
+    SharedDataStore.Preallocate(capacity)
+    SharedDataStore.Initialize(config)
+
+    // 10. 材质管理器 + 资产加载器 + 纹理管理器
+    MaterialManager.Initialize(capacity)
+    AssetLoader.Initialize(projectRoot)
+    TextureManager.Initialize(device, descriptorHeaps)
+
+    // 11. 帧资源管理器
+    FrameResourceManager.Initialize(device, descriptorHeaps, config)
+
+    // 12. 几何体 + 骨骼管理器
+    GeometryResourceManager.Initialize(capacity)
+    SkeletonManager.Initialize(capacity)
+
+    // 13. LOD 系统配置
+    LODSystem.SetLODConfig(config)
+    LODSystem.SetCameraManager(CameraManager)
+    LODSystem.SetGeometryManager(geoManager)
+
+    // 14. DebugUI
+    DebugUI.Initialize(hwnd)
+    DebugUI.InitDX12Backend(device, queue, frameCount, format)
+
+    // 15. 消息分发器
+    MessageDispatcher.Init()
+
+    // 16. ECS Registry
+    Registry.Create()
+
+    // 17. FrameDriver
+    FrameDriver.Initialize(threadCount)
+
+    // 18. 后台任务执行器
+    BackgroundExecutor.Create(threadCount)
+    BackgroundExecutor.SetCommandManager(cmdManager)
+
+    // 19. 资产管理器
+    AssetManager.Initialize(deviceContext, backgroundExecutor, geoMgr, matMgr, texMgr, descriptorHeaps)
+
+    // 20. 网络
+    GameNetworkingSockets.Init()
 ```
 
 ### 3.2 Context 填充
 
-```cpp
-GameContext* Bootstrap::CreateContext() {
-    m_context = std::make_unique<GameContext>();
-    
-    // 填充所有子系统指针
-    m_context->Config        = &ConfigManager::GetInstance();
-    m_context->Logging       = Logger::GetInstance();
-    m_context->Window        = m_window.get();
-    m_context->MainTimer     = m_mainTimer.get();
-    m_context->Dispatcher    = MessageDispatcher::GetInstance();
-    m_context->Registry      = m_registry.get();
-    m_context->FrameDriver   = m_frameDriver;
-    m_context->DeviceContext = m_deviceContext.get();
-    m_context->InputSys      = &InputSystem::Get();
-    m_context->CameraMgr     = &CameraManager::GetInstance();
-    
-    // 关联配置
-    m_frameDriver->SetGameContext(m_context.get());
-    
-    return m_context.get();
-}
+```pseudocode
+Bootstrap::CreateContext():
+    // 创建主计时器
+    mainTimer = new GameTimer()
+
+    // 创建 Context
+    context = new GameContext()
+    context.ProjectConfig        = projectConfig
+    context.Config               = ConfigManager.GetInstance()
+    context.Logging              = Logger.GetInstance()
+    context.Window               = m_window
+    context.MainTimer            = mainTimer
+    context.Dispatcher           = MessageDispatcher.GetInstance()
+    context.Registry             = m_registry
+    context.FrameDriver          = m_frameDriver
+    context.BackgroundExecutor   = m_backgroundExecutor
+    context.DeviceContext        = m_deviceContext
+
+    // 初始化摄像机（需要窗口尺寸）
+    CameraManager.Initialize(width, height)
+    context.CameraMgr = CameraManager.GetInstance()
+
+    // 初始化反射探针管理器
+    ReflectionProbeManager.Initialize(device, descriptorHeaps)
+    context.ReflectionProbeMgr = ReflectionProbeManager
+
+    // 初始化环境光遮蔽
+    AmbientOcclusionManager.Initialize(device, descriptorHeaps, width, height)
+    context.AmbientOcclusionMgr = AmbientOcclusionManager
+
+    // 资源引用
+    context.DescriptorHeaps       = descriptorHeaps
+    context.DepthStencilPool      = DepthStencilPool.GetInstance()
+    context.RenderTargetPool      = RenderTargetPool.GetInstance()
+    context.FrameResourceManager  = frameResourceManager
+    context.InputMgr              = InputManager.Get()
+    context.GeometryResourceManager = geometryResourceManager
+    context.MaterialMgr           = materialManager
+    context.TextureMgr            = textureManager
+    context.SkeletonMgr           = skeletonManager
+    context.CullingSystem         = cullingSystem
+    context.LODSystem             = lodSystem
+    context.VisibleRaycaster      = visibleRaycaster (已 Init)
+
+    // 关联到 FrameDriver 和 DebugUI
+    FrameDriver.SetGameContext(context)
+    DebugUI.SetGameContext(context)
+    DebugUI.AutoRegisterToFrameDriver(context)
+
+    return context
 ```
 
 ### 3.3 错误处理与清理
 
-```cpp
-void Bootstrap::Shutdown() {
+```pseudocode
+Bootstrap::Shutdown():
     // 按逆序清理资源
-    ShutdownSchedulerContext();      // FrameDriver 清理
-    m_context.reset();               // GameContext
-    m_deviceContext.reset();         // D3D12 设备
-    m_window.reset();                // 窗口
-    m_registry.reset();              // ECS Registry
-    MessageDispatcher::Shutdown();   // 事件系统
-    Logger::Shutdown();              // 日志
-    ConfigManager::GetInstance().Shutdown();  // 配置
-    GameNetworkingSockets_Kill();    // 网络
-}
+    ShutdownSchedulerContext()      // FrameDriver 清理
+    GameNetworkingSockets_Kill()    // 网络
+    m_assetManager 释放             // 资产管理器
+    m_backgroundExecutor 释放       // 后台任务执行器
+    m_context 释放                  // GameContext
+    m_deviceContext 释放            // D3D12 设备（等待 GPU 完成）
+    m_window 释放                   // 窗口
+    m_registry 释放                 // ECS Registry
+    m_mainTimer 释放                // 计时器
+    MessageDispatcher.Shutdown()   // 事件系统
+    GpuResourceManager 释放         // GPU 资源
+    Logger.Shutdown()               // 日志
+    ConfigManager.Shutdown()       // 配置
 ```
 
 ---
